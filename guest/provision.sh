@@ -26,7 +26,7 @@ SIGNING_KEY=""
 
 usage() {
   cat <<'EOF'
-Usage: guest/provision.sh --hostname NAME [options]
+Usage: guest/provision.sh [options]
 
   --hostname NAME          Set LocalHostName/ComputerName/HostName.
                            If omitted, derived from your GitHub login as
