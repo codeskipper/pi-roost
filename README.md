@@ -1,7 +1,7 @@
 # pi-kit-1pass-tart-macos
 
 Reproducible setup for running the **pi** coding agent inside a **Tart** macOS
-VM, with GitHub credentials held in **1Password** on the host and never written
+VM, with the **SSH key** held in **1Password** on the host and never written
 into the VM.
 
 The name spells out the four fixed assumptions: pi as the agent, 1Password as
@@ -13,29 +13,52 @@ from what is *not* reachable from in there, not from constraining the agent.
 This is the same model Docker Sandboxes uses: the VM is the trust boundary, and
 credentials live on the other side of it.
 
-## Why 1Password specifically
+## Three credentials, only one of them solved by 1Password
 
-The kit depends on the 1Password SSH agent rather than `ssh-agent` plus the
-macOS keychain, for two reasons:
+Be precise about this, because the repo name invites the wrong conclusion:
+
+| Credential | Used for | Where it lives | In 1Password? |
+|---|---|---|---|
+| SSH key | `git clone/push/pull`, `ssh -T git@github.com` | host, inside 1Password | **yes** |
+| `gh` OAuth token | `gh` API calls — PRs, issues, releases | VM login keychain | no |
+| Model provider token | pi's calls to the LLM API | VM, plaintext `~/.pi/agent/auth.json` | no |
+
+**1Password solves the first row completely.** The key is never a file, never
+enters the VM, and cannot be copied out of it — only signatures cross the
+boundary. Since day-to-day work is almost entirely git over SSH, that is the
+credential you expose most often and the one now fully protected.
+
+The other two still live in the VM, because `gh` and pi need them in-process.
+The kit reduces rather than removes that exposure: it strips the `gh` token to
+the minimum scopes GitHub allows, keeps it out of plaintext `hosts.yml`, and
+documents the provider token as an accepted residual risk. Properly fixing
+those needs an intercepting proxy, which is out of scope — see
+[docs/SECURITY.md](docs/SECURITY.md).
+
+## Why the 1Password agent beats ssh-agent + keychain
 
 - The private key never exists as a file on any machine, so there is nothing
-  for the VM to read even in principle.
+  for the VM to read even in principle. With `ssh-agent` the key sits in
+  `~/.ssh/`, encrypted at best, and its passphrase sits in a keychain that is
+  unlocked for the whole session.
 - The stock OpenSSH agent lets *any* process use *any* loaded key with no
   prompt. 1Password requires explicit approval per key, with biometrics.
 
-The key still signs for anything running in the VM during an authorised
-session — see [docs/SECURITY.md](docs/SECURITY.md) — but it can never be
-copied out.
+The honest limit: once you approve a key for a session, anything running as
+your user in the VM can make it sign for as long as you stay connected.
+Authorisation is per key, not per request. What you gain is that a captured
+session cannot outlive itself — there is no key material to steal.
 
-## What it gives you
+## What the kit changes
 
 | | Without this kit | With this kit |
 |---|---|---|
 | SSH private key | on the VM disk | on the host, in 1Password |
 | Key passphrase | VM login keychain | never exists |
-| Agent can *use* the key | yes, silently | yes, but only while you are connected |
+| Agent can *use* the key | yes, silently | only while you are connected, after approval |
 | Agent can *steal* the key | yes | no — key never crosses the boundary |
-| `gh` token | VM keychain, long-lived | VM keychain, minimum scopes |
+| `gh` token scopes | `admin:public_key` + more | `repo`, `read:org`, `gist` floor |
+| `gh` token storage | sometimes plaintext `hosts.yml` | system keyring |
 | Autologin password | `/etc/kcpassword`, world-readable | removed |
 | SSH host keys | baked into base image, shared by clones | unique per VM |
 
