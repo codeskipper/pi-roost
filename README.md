@@ -34,10 +34,22 @@ Clone on the **host**:
 git clone <this-repo> && cd codeskipper-vm-kit
 ```
 
+### 0. Create the VM (optional)
+
+If you don't have one yet:
+
+```bash
+host/create-vm.sh --from ghcr.io/cirruslabs/macos-sequoia-base:latest
+```
+
+It suggests a name derived from your GitHub login — `alice-tart-test-vm` —
+and asks you to confirm. Clones, boots, and waits for an address.
+
 ### 1. Host side
 
 ```bash
-./host/setup.sh --vm-name codeskipper-test-vm --vm-host codeskipper-test-vm.local
+host/setup.sh                      # derives and confirms the VM name
+host/setup.sh --vm-name my-vm      # or name it explicitly
 ```
 
 This verifies the 1Password agent, adds an SSH config block with
@@ -46,23 +58,38 @@ the VM's `authorized_keys`.
 
 ### 2. Guest side
 
+Copy the **whole repo** (the scripts share `lib/`):
+
 ```bash
-scp -r guest codeskipper-test-vm.local:~/ && ssh codeskipper-test-vm.local
-./guest/provision.sh --hostname codeskipper-test-vm
+rsync -a --exclude .git ./ <vm-alias>:~/codeskipper-vm-kit/
+ssh <vm-alias>
+cd codeskipper-vm-kit && ./guest/provision.sh
 ```
 
-Renames the VM, regenerates host keys, removes any local SSH key and its
-keychain entry, strips autologin, and writes a `~/.ssh/config` that works with a
-forwarded agent.
+`provision.sh` derives the same `<login>-tart-test-vm` name, or takes
+`--hostname NAME`. It renames the VM, regenerates host keys, removes any local
+SSH key and its keychain entry, strips autologin, and writes a `~/.ssh/config`
+that works with a forwarded agent.
 
 ### 3. Verify
 
 ```bash
-./guest/verify.sh
+./guest/verify.sh            # add --network to test GitHub auth
 ```
 
-Prints a PASS/WARN/FAIL audit of the whole posture. Run it any time; it is
-read-only.
+Prints a PASS/WARN/FAIL audit of the whole posture. Read-only; run it any time.
+
+## Naming
+
+The VM name defaults to `<github-login>-tart-test-vm`, resolved in this order:
+
+1. `gh api user --jq .login`, if `gh` is installed and authenticated
+2. the SSH agent — GitHub greets you by login over SSH, so this works with
+   only 1Password configured
+3. `$USER`
+
+The result is lowercased and stripped to `[a-z0-9-]`. You are always shown the
+suggestion and can override it; non-interactive runs accept the default.
 
 ## Add the public key to GitHub
 

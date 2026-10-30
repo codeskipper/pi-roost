@@ -3,6 +3,19 @@
 # Idempotent: safe to re-run. Destructive steps are opt-out, not silent.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/../lib/common.sh" ]; then
+  # shellcheck source=../lib/common.sh
+  . "$SCRIPT_DIR/../lib/common.sh"
+else
+  # Copied without lib/: keep working, but --hostname becomes mandatory.
+  say()  { printf '  %s\n' "$*"; }
+  step() { printf '\n==> %s\n' "$*"; }
+  die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
+  derive_github_login() { die "lib/common.sh not found - pass --hostname explicitly"; }
+  confirm_value() { printf '%s' "$2"; }
+fi
+
 HOSTNAME_NEW=""
 REGEN_HOST_KEYS=1
 REMOVE_LOCAL_KEYS=1
@@ -15,7 +28,9 @@ usage() {
   cat <<'EOF'
 Usage: guest/provision.sh --hostname NAME [options]
 
-  --hostname NAME          Set LocalHostName/ComputerName/HostName (required)
+  --hostname NAME          Set LocalHostName/ComputerName/HostName.
+                           If omitted, derived from your GitHub login as
+                           <login>-tart-test-vm (needs a forwarded agent or gh).
   --keep-host-keys         Do NOT regenerate /etc/ssh host keys
   --keep-local-keys        Do NOT remove ~/.ssh private keys + keychain entries
   --keep-autologin         Do NOT disable autologin / remove /etc/kcpassword
@@ -40,11 +55,14 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$HOSTNAME_NEW" ] || { echo "error: --hostname is required" >&2; usage; exit 2; }
 [ "$(uname -s)" = "Darwin" ] || { echo "error: this must run on macOS" >&2; exit 1; }
 
-say()  { printf '  %s\n' "$*"; }
-step() { printf '\n==> %s\n' "$*"; }
+if [ -z "$HOSTNAME_NEW" ]; then
+  LOGIN="$(derive_github_login)"
+  printf '  GitHub login detected: %s\n' "$LOGIN"
+  HOSTNAME_NEW="$(confirm_value 'VM hostname' "$(suggest_vm_name "$LOGIN")")"
+fi
+[ -n "$HOSTNAME_NEW" ] || { echo "error: empty hostname" >&2; exit 2; }
 
 step "Setting hostname to '$HOSTNAME_NEW'"
 sudo scutil --set LocalHostName "$HOSTNAME_NEW"

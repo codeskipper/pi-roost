@@ -3,6 +3,10 @@
 # Idempotent. Run on the macOS host, not in the VM.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/common.sh
+. "$SCRIPT_DIR/../lib/common.sh"
+
 VM_NAME=""
 VM_HOST=""
 VM_USER="admin"
@@ -14,19 +18,21 @@ SSH_CONFIG="$HOME/.ssh/config"
 
 usage() {
   cat <<'EOF'
-Usage: host/setup.sh --vm-name NAME [options]
+Usage: host/setup.sh [options]
 
-  --vm-name NAME     Tart VM name (required)
-  --vm-host HOST     mDNS/DNS name of the VM, e.g. my-vm.local
-                     If omitted, --tart-ip is implied.
+  --vm-name NAME     Tart VM name. If omitted, a name is derived from your
+                     GitHub login as <login>-tart-test-vm and you are asked
+                     to confirm it.
+  --vm-host HOST     DNS/mDNS name of the VM (default: <vm-name>.local)
   --alias NAME       SSH alias to create (default: --vm-name value)
   --user USER        VM username (default: admin)
   --tart-ip          Resolve the address via `tart ip` instead of DNS
   -h, --help         Show this help
 
 Examples:
-  host/setup.sh --vm-name codeskipper-test-vm --vm-host codeskipper-test-vm.local
-  host/setup.sh --vm-name codeskipper-test-vm --tart-ip
+  host/setup.sh                                  # derive and confirm the name
+  host/setup.sh --vm-name alice-tart-test-vm
+  host/setup.sh --vm-name alice-tart-test-vm --tart-ip
 EOF
 }
 
@@ -42,14 +48,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$VM_NAME" ] || { echo "error: --vm-name is required" >&2; usage; exit 2; }
-[ -n "$ALIAS" ] || ALIAS="$VM_NAME"
-[ -n "$VM_HOST" ] || USE_TART_IP=1
-
-say()  { printf '  %s\n' "$*"; }
-step() { printf '\n==> %s\n' "$*"; }
-die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
-
 step "Checking the 1Password SSH agent"
 if [ -S "$OP_SOCK" ]; then
   say "socket present"
@@ -63,6 +61,23 @@ if ! SSH_AUTH_SOCK="$OP_SOCK" ssh-add -l >/dev/null 2>&1; then
   die "agent reachable but holds no keys. Add an SSH key item in 1Password."
 fi
 SSH_AUTH_SOCK="$OP_SOCK" ssh-add -l | sed 's/^/  /'
+# Everything below (including GitHub login detection) talks to the 1Password agent.
+export SSH_AUTH_SOCK="$OP_SOCK"
+
+step "Naming"
+if [ -z "$VM_NAME" ]; then
+  LOGIN="$(derive_github_login)"
+  say "GitHub login detected: $LOGIN"
+  VM_NAME="$(confirm_value 'VM name' "$(suggest_vm_name "$LOGIN")")"
+fi
+[ -n "$VM_NAME" ] || die "empty VM name"
+[ -n "$ALIAS" ] || ALIAS="$VM_NAME"
+if [ "$USE_TART_IP" -eq 0 ] && [ -z "$VM_HOST" ]; then
+  VM_HOST="$VM_NAME.local"
+fi
+say "VM name:    $VM_NAME"
+say "SSH alias:  $ALIAS"
+say "address:    ${VM_HOST:-via tart ip}"
 
 step "Writing SSH config block for '$ALIAS'"
 mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"
