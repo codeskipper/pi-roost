@@ -29,9 +29,32 @@ access. Mitigations: keep scopes at the `repo`/`read:org`/`gist` floor (`gh auth
 refresh --remove-scopes ...`), or replace it with a fine-grained PAT that has an
 expiry date. Revoke at <https://github.com/settings/connections/applications/>.
 
+**What a leaked `gh` token actually permits.** The floor scopes are not a small
+blast radius. `repo` grants *"read/write access to code, commit statuses,
+invitations, collaborators, adding team memberships, and deployment statuses for
+public and private repositories and organizations"*, and is *"needed for all git
+network operations"*. Tokens are accepted in place of a password for Git over
+HTTPS, so a leak permits:
+
+```bash
+git clone https://<token>@github.com/you/private-repo   # read all code
+git push  https://<token>@github.com/you/private-repo   # write all code
+```
+
+across every repository the account can reach, until manually revoked. It does
+*not* permit deleting repositories (`delete_repo`), organisation administration
+(`admin:org`), account or billing changes, or web UI sign-in.
+
+Organisation OAuth app access policies can block the GitHub CLI app from org
+repositories independently of these scopes; that is worth enabling if your org
+supports it.
+
 **`admin:public_key` is the scope that matters most.** With it, a stolen token
 can add an attacker's SSH key to your account — persistence that survives
 revoking the token. This kit removes it, at the cost of `gh ssh-key add`.
+The practical effect is that **revocation becomes sufficient**: a leaked token
+still exposes all your code until you notice, but it cannot leave anything
+behind once you do.
 
 **Model provider tokens cannot be brokered.** pi needs the token in-process, so
 it must exist in the VM. Properly fixing this requires an intercepting proxy

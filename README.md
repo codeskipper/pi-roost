@@ -20,7 +20,7 @@ Be precise about this, because the repo name invites the wrong conclusion:
 | Credential | Used for | Where it lives | In 1Password? |
 |---|---|---|---|
 | SSH key | `git clone/push/pull`, `ssh -T git@github.com` | host, inside 1Password | **yes** |
-| `gh` OAuth token | `gh` API calls — PRs, issues, releases | VM login keychain | no |
+| `gh` OAuth token | `gh` API calls, **and** full read/write to code over HTTPS | VM login keychain | no |
 | Model provider token | pi's calls to the LLM API | VM, plaintext `~/.pi/agent/auth.json` | no |
 
 **1Password solves the first row completely.** The key is never a file, never
@@ -34,6 +34,15 @@ the minimum scopes GitHub allows, keeps it out of plaintext `hosts.yml`, and
 documents the provider token as an accepted residual risk. Properly fixing
 those needs an intercepting proxy, which is out of scope — see
 [docs/SECURITY.md](docs/SECURITY.md).
+
+> **Do not under-read the `gh` token.** Even at the minimum scopes, `repo`
+> grants *"read/write access to code, commit statuses, invitations,
+> collaborators, adding team memberships, and deployment statuses"* across every
+> repository your account can reach, and a token works as a git password over
+> HTTPS. A leak means an attacker can clone and push code — not just file
+> issues — permanently, until you revoke it. What the kit removes is
+> *persistence beyond revocation*: without `admin:public_key`, a leaked token
+> can no longer plant an SSH key that survives cleanup.
 
 ## Why the 1Password agent beats ssh-agent + keychain
 
