@@ -11,7 +11,10 @@ Swap any of those and the scripts need changes.
 The agent runs with full root inside the VM. That is fine — the security comes
 from what is *not* reachable from in there, not from constraining the agent.
 This is the same model Docker Sandboxes uses: the VM is the trust boundary, and
-credentials live on the other side of it.
+credentials live on the other side of it. Docker Sandboxes cannot run a macOS
+guest, so this kit applies that model where `sbx` does not reach — see
+[docs/COMPARISON.md](docs/COMPARISON.md) for an honest scorecard, including the
+three axes where `sbx` is better.
 
 ## Three credentials, only one of them solved by 1Password
 
@@ -155,7 +158,9 @@ is the realistic risk — not a dramatic token theft, but a bad commit landing o
   expiry date, replacing the long-lived `gho_` token.
 
 Time containment plus scope containment is where to stop. Either alone leaves
-an obvious gap.
+an obvious gap. For how this compares with Docker Sandboxes — including
+egress control, ephemerality and the provider token, where it loses — see
+[docs/COMPARISON.md](docs/COMPARISON.md).
 
 ## Requirements
 
