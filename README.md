@@ -1,12 +1,31 @@
-# codeskipper-vm-kit
+# pi-kit-1pass-tart-macos
 
-Reproducible setup for running a coding agent (pi) inside a Tart macOS VM, with
-GitHub credentials kept **outside** the VM.
+Reproducible setup for running the **pi** coding agent inside a **Tart** macOS
+VM, with GitHub credentials held in **1Password** on the host and never written
+into the VM.
+
+The name spells out the four fixed assumptions: pi as the agent, 1Password as
+the credential store, Tart as the hypervisor, macOS as both host and guest.
+Swap any of those and the scripts need changes.
 
 The agent runs with full root inside the VM. That is fine — the security comes
 from what is *not* reachable from in there, not from constraining the agent.
 This is the same model Docker Sandboxes uses: the VM is the trust boundary, and
 credentials live on the other side of it.
+
+## Why 1Password specifically
+
+The kit depends on the 1Password SSH agent rather than `ssh-agent` plus the
+macOS keychain, for two reasons:
+
+- The private key never exists as a file on any machine, so there is nothing
+  for the VM to read even in principle.
+- The stock OpenSSH agent lets *any* process use *any* loaded key with no
+  prompt. 1Password requires explicit approval per key, with biometrics.
+
+The key still signs for anything running in the VM during an authorised
+session — see [docs/SECURITY.md](docs/SECURITY.md) — but it can never be
+copied out.
 
 ## What it gives you
 
@@ -32,7 +51,7 @@ credentials live on the other side of it.
 Clone on the **host**:
 
 ```bash
-git clone <this-repo> && cd codeskipper-vm-kit
+git clone <this-repo> && cd pi-kit-1pass-tart-macos
 ```
 
 ### 0. Create the VM (optional)
@@ -66,9 +85,9 @@ the VM's `authorized_keys`.
 Copy the **whole repo** (the scripts share `lib/`):
 
 ```bash
-rsync -a --exclude .git ./ <vm-alias>:~/codeskipper-vm-kit/
+rsync -a --exclude .git ./ <vm-alias>:~/pi-kit-1pass-tart-macos/
 ssh <vm-alias>
-cd codeskipper-vm-kit && ./guest/provision.sh
+cd pi-kit-1pass-tart-macos && ./guest/provision.sh
 ```
 
 `provision.sh` derives the same `<login>-tart-test-vm` name, or takes

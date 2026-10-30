@@ -83,8 +83,8 @@ step "Writing SSH config block for '$ALIAS'"
 mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"
 touch "$SSH_CONFIG"; chmod 600 "$SSH_CONFIG"
 
-BEGIN="# >>> codeskipper-vm-kit: $ALIAS >>>"
-END="# <<< codeskipper-vm-kit: $ALIAS <<<"
+BEGIN="# >>> pi-kit-1pass-tart-macos: $ALIAS >>>"
+END="# <<< pi-kit-1pass-tart-macos: $ALIAS <<<"
 
 if [ "$USE_TART_IP" -eq 1 ]; then
   command -v tart >/dev/null || die "tart not found in PATH"
