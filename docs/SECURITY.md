@@ -51,6 +51,27 @@ grep -rlE 'gho_[A-Za-z0-9]{36}|ghu_[A-Za-z0-9]{36}|BEGIN OPENSSH PRIVATE KEY' ~/
 login keychain, `auth.json`. Re-run `provision.sh` in any clone, and never
 `tart push` a provisioned VM.
 
+## Why the base images always need provisioning
+
+This is not specific to one VM. The upstream cirruslabs images are built that
+way on purpose, for CI convenience:
+
+- The image templates describe `macos-{tahoe,sequoia,sonoma}-vanilla` as *"a
+  vanilla macOS installation with helpful tweaks such as **auto-login**"*, and
+  the `-base` images build on top of those.
+- The Packer templates set `ssh_username = "admin"` and `ssh_password =
+  "admin"`.
+
+So every fresh clone starts with a known password, auto-login enabled, and
+therefore `/etc/kcpassword` present — a world-readable file holding that
+password XOR'd against a published key. It also starts with the SSH host keys
+that were baked in at image build time, shared by every other clone of the same
+image.
+
+`guest/provision.sh` exists to undo exactly these three things. Running it is
+not hardening-on-top-of-a-secure-default; it is the step that makes a
+CI-oriented image safe to hold credentials.
+
 ## Verification, not assertion
 
 Several assumptions in this setup turned out to be wrong when tested:

@@ -23,6 +23,7 @@ credentials live on the other side of it.
 ## Requirements
 
 - macOS host with [Tart](https://tart.run) and a macOS guest VM
+  (`brew install cirruslabs/cli/tart`)
 - 1Password with the SSH agent enabled (Settings → Developer → Use the SSH agent)
 - `nc` (ships with macOS)
 
@@ -39,8 +40,12 @@ git clone <this-repo> && cd codeskipper-vm-kit
 If you don't have one yet:
 
 ```bash
-host/create-vm.sh --from ghcr.io/cirruslabs/macos-sequoia-base:latest
+host/create-vm.sh
 ```
+
+Defaults to `ghcr.io/cirruslabs/macos-tahoe-base:latest` (macOS 26 Tahoe).
+Pass `--from` for a different image — `macos-tahoe-vanilla` for a bare install,
+`macos-tahoe-xcode` if you need Xcode, or swap `tahoe` for `sequoia`/`sonoma`.
 
 It suggests a name derived from your GitHub login — `alice-tart-test-vm` —
 and asks you to confirm. Clones, boots, and waits for an address.

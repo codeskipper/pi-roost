@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$SCRIPT_DIR/../lib/common.sh"
 
-BASE=""
+BASE="ghcr.io/cirruslabs/macos-tahoe-base:latest"
 VM_NAME=""
 CPU=""
 MEMORY=""
@@ -15,15 +15,22 @@ START=1
 
 usage() {
   cat <<'EOF'
-Usage: host/create-vm.sh --from BASE_IMAGE [options]
+Usage: host/create-vm.sh [options]
 
-  --from IMAGE    Base image to clone, e.g.
-                  ghcr.io/cirruslabs/macos-sequoia-base:latest   (required)
+  --from IMAGE    Base image to clone.
+                  Default: ghcr.io/cirruslabs/macos-tahoe-base:latest (macOS 26)
+                  Other variants:
+                    ghcr.io/cirruslabs/macos-tahoe-vanilla:latest  (no extras)
+                    ghcr.io/cirruslabs/macos-tahoe-xcode:latest    (+ Xcode, large)
+                  Older: swap 'tahoe' for 'sequoia' or 'sonoma'.
   --name NAME     VM name (default: <github-login>-tart-test-vm, confirmed)
   --cpu N         vCPUs to assign
   --memory MB     Memory in MB
   --no-start      Clone only, do not boot
   -h, --help      Show this help
+
+The cirruslabs images ship with auto-login enabled and the password 'admin'.
+guest/provision.sh removes both - run it on every fresh clone.
 
 After it boots, run:
   host/setup.sh --vm-name <name>
@@ -43,7 +50,8 @@ while [ $# -gt 0 ]; do
 done
 
 command -v tart >/dev/null || die "tart not found. Install it: brew install cirruslabs/cli/tart"
-[ -n "$BASE" ] || { echo "error: --from is required" >&2; usage; exit 2; }
+[ -n "$BASE" ] || { echo "error: --from cannot be empty" >&2; usage; exit 2; }
+say "base image: $BASE"
 
 step "Naming"
 if [ -z "$VM_NAME" ]; then
