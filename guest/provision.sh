@@ -21,6 +21,7 @@ REGEN_HOST_KEYS=1
 REMOVE_LOCAL_KEYS=1
 STRIP_AUTOLOGIN=1
 DISABLE_PASSWORD_AUTH=0
+LOGOUT_GH=0
 SETUP_GIT_SIGNING=0
 SIGNING_KEY=""
 
@@ -35,6 +36,9 @@ Usage: guest/provision.sh [options]
   --keep-local-keys        Do NOT remove ~/.ssh private keys + keychain entries
   --keep-autologin         Do NOT disable autologin / remove /etc/kcpassword
   --disable-password-auth  Turn off sshd password auth (needs authorized_keys!)
+  --logout-gh              Log out of gh, leaving no persistent GitHub
+                           credential in the VM. Git still works over SSH via
+                           the forwarded agent; run gh on the host instead.
   --git-signing PUBKEY     Configure git commit signing with this public key
   -h, --help               Show this help
 
@@ -49,6 +53,7 @@ while [ $# -gt 0 ]; do
     --keep-local-keys)       REMOVE_LOCAL_KEYS=0; shift ;;
     --keep-autologin)        STRIP_AUTOLOGIN=0; shift ;;
     --disable-password-auth) DISABLE_PASSWORD_AUTH=1; shift ;;
+    --logout-gh) LOGOUT_GH=1; shift ;;
     --git-signing) SETUP_GIT_SIGNING=1; SIGNING_KEY="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage; exit 2 ;;
@@ -142,6 +147,18 @@ if [ "$SETUP_GIT_SIGNING" -eq 1 ]; then
   git config --global commit.gpgsign true
   git config --global user.signingkey "$SIGNING_KEY"
   say "signing with the forwarded key"
+fi
+
+if [ "$LOGOUT_GH" -eq 1 ]; then
+  step "Removing the resident gh credential"
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    gh auth logout --hostname github.com 2>/dev/null || true
+    say "logged out - no persistent GitHub credential in this VM"
+    say "git over SSH still works while an agent is forwarded"
+    say "run gh on the host, e.g. gh pr create -R owner/repo --head BRANCH"
+  else
+    say "gh not installed or already logged out"
+  fi
 fi
 
 if [ "$DISABLE_PASSWORD_AUTH" -eq 1 ]; then

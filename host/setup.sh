@@ -94,8 +94,15 @@ else
 fi
 
 BLOCK="$BEGIN
-# IdentityAgent is global on purpose; ForwardAgent is scoped to this host only.
+# Two capability levels for the same VM. The default alias forwards nothing;
+# use the -git alias only when the VM needs to reach GitHub.
 Host $ALIAS
+$TARGET
+  User $VM_USER
+  HostKeyAlias $ALIAS
+  ForwardAgent no
+
+Host ${ALIAS}-git
 $TARGET
   User $VM_USER
   HostKeyAlias $ALIAS
@@ -135,25 +142,36 @@ SSH_AUTH_SOCK="$OP_SOCK" ssh-add -L | \
      echo "  authorized_keys now has $(wc -l < ~/.ssh/authorized_keys | tr -d " ") key(s)"'
 
 step "Verifying agent forwarding"
-if ssh -o BatchMode=yes "$ALIAS" 'ssh-add -l' 2>/dev/null | sed 's/^/  /'; then
-  say "forwarding works"
+if ssh -o BatchMode=yes "${ALIAS}-git" 'ssh-add -l' 2>/dev/null | sed 's/^/  /'; then
+  say "forwarding works via ${ALIAS}-git"
 else
-  die "could not list forwarded keys via '$ALIAS'. Try: ssh -v $ALIAS"
+  die "could not list forwarded keys via '${ALIAS}-git'. Try: ssh -v ${ALIAS}-git"
+fi
+
+step "Verifying the default alias forwards nothing"
+if ssh -o BatchMode=yes "$ALIAS" 'ssh-add -l' >/dev/null 2>&1; then
+  say "WARNING: '$ALIAS' reached an agent - expected none"
+else
+  say "'$ALIAS' has no agent, as intended"
 fi
 
 cat <<EOF
 
-Done. Next:
+Done. Two ways to connect:
+
+  ssh $ALIAS        no credentials reach the VM (use this by default)
+  ssh ${ALIAS}-git    agent forwarded, VM can reach GitHub for that session
+
+Next:
 
   1. Add your public key to GitHub:  https://github.com/settings/keys
      (gh ssh-key add needs admin:public_key, which this kit removes)
 
   2. Provision the guest:
-       scp -r guest $ALIAS:~/ && ssh $ALIAS
-       ./guest/provision.sh --hostname $VM_NAME
+       rsync -a --exclude .git ./ ${ALIAS}-git:~/pi-kit-1pass-tart-macos/
+       ssh ${ALIAS}-git
+       cd pi-kit-1pass-tart-macos && ./guest/provision.sh --logout-gh
 
   3. Audit:
-       ssh $ALIAS ./guest/verify.sh
-
-  Connect with:  ssh $ALIAS
+       ssh ${ALIAS}-git ./pi-kit-1pass-tart-macos/guest/verify.sh --network
 EOF

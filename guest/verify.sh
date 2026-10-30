@@ -105,17 +105,22 @@ fi
 
 sec "GitHub CLI"
 if command -v gh >/dev/null 2>&1; then
-  if [ -f "$HOME/.config/gh/hosts.yml" ] && grep -q oauth_token "$HOME/.config/gh/hosts.yml" 2>/dev/null; then
-    bad "gh token stored in PLAINTEXT in ~/.config/gh/hosts.yml"
+  if gh auth status >/dev/null 2>&1; then
+    warn "a gh credential is resident in this VM - prefer 'gh auth logout' and run gh on the host"
+    if [ -f "$HOME/.config/gh/hosts.yml" ] && grep -q oauth_token "$HOME/.config/gh/hosts.yml" 2>/dev/null; then
+      bad "gh token stored in PLAINTEXT in ~/.config/gh/hosts.yml"
+    else
+      ok "gh token not in hosts.yml (keyring)"
+    fi
+    SCOPES="$(gh auth status 2>&1 | sed -n "s/.*Token scopes: //p")"
+    if [ -n "$SCOPES" ]; then
+      case "$SCOPES" in
+        *admin:public_key*) bad "gh token has admin:public_key - it can add SSH keys to your account" ;;
+        *) ok "gh scopes: $SCOPES" ;;
+      esac
+    fi
   else
-    ok "gh token not in hosts.yml (keyring or not logged in)"
-  fi
-  SCOPES="$(gh auth status 2>&1 | sed -n "s/.*Token scopes: //p")"
-  if [ -n "$SCOPES" ]; then
-    case "$SCOPES" in
-      *admin:public_key*) bad "gh token has admin:public_key - it can add SSH keys to your account" ;;
-      *) ok "gh scopes: $SCOPES" ;;
-    esac
+    ok "no resident gh credential (git works via the forwarded agent)"
   fi
 else
   ok "gh not installed"

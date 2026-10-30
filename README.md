@@ -20,7 +20,7 @@ Be precise about this, because the repo name invites the wrong conclusion:
 | Credential | Used for | Where it lives | In 1Password? |
 |---|---|---|---|
 | SSH key | `git clone/push/pull`, `ssh -T git@github.com` | host, inside 1Password | **yes** |
-| `gh` OAuth token | `gh` API calls, **and** full read/write to code over HTTPS | VM login keychain | no |
+| `gh` OAuth token | `gh` API calls, **and** full read/write to code over HTTPS | **host only** — `gh auth logout` in the VM | no |
 | Model provider token | pi's calls to the LLM API | VM, plaintext `~/.pi/agent/auth.json` | no |
 
 **1Password solves the first row completely.** The key is never a file, never
@@ -70,6 +70,92 @@ session cannot outlive itself — there is no key material to steal.
 | `gh` token storage | sometimes plaintext `hosts.yml` | system keyring |
 | Autologin password | `/etc/kcpassword`, world-readable | removed |
 | SSH host keys | baked into base image, shared by clones | unique per VM |
+
+## Daily workflow: two capability levels
+
+`host/setup.sh` writes two SSH aliases for the same VM. The default forwards
+nothing; repo access is an explicit opt-in, so the dangerous mode is never the
+accident.
+
+```bash
+ssh tart-vm          # no credentials reach the VM  ← use this by default
+ssh tart-vm-git      # agent forwarded, GitHub reachable for this session
+```
+
+### Most sessions — no repo access
+
+```bash
+ssh tart-vm
+  ssh-add -l        # Error connecting to agent - nothing forwarded
+  pi                # edit, build, test, run
+  git commit -m ... # works: commits are local, need no credential
+  git push          # fails: nothing to authenticate with
+```
+
+An unattended agent session produces reviewable commits while having no way to
+reach GitHub at all. Reading, editing, building, testing and committing need no
+credential — only network operations do.
+
+### When you need to publish
+
+```bash
+ssh tart-vm-git
+  git push          # 1Password prompts for Touch ID, first use this session
+  exit              # capability ends here
+```
+
+1Password prompts once per *key per session*, not per push, so a long session
+leaves a standing capability. Push and disconnect if you want it tight.
+
+### API work runs on the host
+
+With no `gh` credential in the VM, PRs and releases run from your Mac. `-R`
+means you do not need a clone there:
+
+```bash
+gh pr create -R owner/repo --head feature-x --base main --title "..."
+gh release create -R owner/repo v1.2.3
+```
+
+| | `ssh tart-vm` | `ssh tart-vm-git` | host |
+|---|---|---|---|
+| Edit, build, test | yes | yes | — |
+| `git commit` (local) | yes | yes | — |
+| `git push` / `pull` | no | yes, session-bound | yes |
+| `gh pr` / `release` | no | no | yes |
+| Persistent credential in VM | none | none | — |
+
+`ssh -a tart-vm-git` disables forwarding for one connection if you picked the
+wrong alias; command-line options beat the config file.
+
+## The trade-off, stated plainly
+
+This design contains the credential in **time**, not in **scope**.
+
+**What it contains.** There is no persistent GitHub credential in the VM. The
+property that made the `gh` token dangerous — one read grants permanent access —
+is gone. The SSH key can never be copied out, and its usability ends when you
+disconnect.
+
+**What it does not contain.** During an open `-git` session, the VM can push to
+any repository your key reaches. Bounded *capability* is not bounded *damage*:
+commits pushed during that window persist afterwards. For a coding agent that
+is the realistic risk — not a dramatic token theft, but a bad commit landing on
+`main` while a window was open.
+
+**Closing the scope axis** (recommended, not automated by this kit):
+
+- **Per-repo deploy keys.** Keep a deploy key per project in 1Password instead
+  of your account key. Then even mid-session the VM reaches exactly one
+  repository. Strongest remaining improvement.
+- **Branch protection / required review.** Makes "agent pushes to `main`"
+  structurally impossible. Pairs naturally with this flow: the agent pushes a
+  branch, you open the PR from the host.
+- **Fine-grained PAT** for the host-side `gh`, scoped to specific repos with an
+  expiry date, replacing the long-lived `gho_` token.
+
+Time containment plus scope containment is where to stop. Either alone leaves
+an obvious gap.
 
 ## Requirements
 

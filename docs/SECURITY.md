@@ -9,19 +9,27 @@ file and environment variable owned by that user. The design question is not
 
 | Asset | Where it lives | Reachable from the VM? |
 |---|---|---|
-| SSH private key | host, inside 1Password | **No.** Only signatures cross the boundary. |
+| SSH private key | host, inside 1Password | **No.** Only signatures cross, and only while a `-git` session is open. |
 | SSH key passphrase | never materialises | **No.** |
-| `gh` OAuth token | VM login keychain | Yes, while the keychain is unlocked. |
+| `gh` OAuth token | host only, after `provision.sh --logout-gh` | **No.** Run `gh` on the host with `-R owner/repo`. |
 | Model provider token | `~/.pi/agent/auth.json`, plaintext | Yes, always. |
 | Account password | hashed, `/etc/kcpassword` removed | No. |
 
 ## Residual risks, stated plainly
 
-**Agent forwarding is session-scoped.** While you are connected, any process
-running as your user in the VM can ask the forwarded agent to sign. 1Password
-prompts once per *key*, not per *request*. Mitigation: connect only when you
-need it; disconnect when you don't. The key itself can never be exfiltrated, so
-a capture does not outlive the session.
+**Agent forwarding is session-scoped — but damage is not.** While you are
+connected, any process running as your user in the VM can ask the forwarded
+agent to sign. 1Password prompts once per *key*, not per *request*. The key
+itself can never be exfiltrated, so no credential survives the session.
+
+Do not over-read that. Bounded capability is not bounded damage: anything
+pushed during an open window stays pushed. The session boundary protects the
+*credential*, not the *repository*. Close the gap with per-repo deploy keys
+(so the capability reaches one repo, not all of them) and branch protection
+(so it cannot reach `main` unreviewed).
+
+Mitigation in practice: connect with the non-forwarding alias by default, and
+use the `-git` alias only when you intend to push.
 
 **The `gh` token does not rotate.** GitHub lists OAuth app tokens (`gho_`) as
 long-lived with manual revocation. Anything that reads it once has indefinite
