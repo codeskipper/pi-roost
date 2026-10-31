@@ -119,9 +119,9 @@ It would close one of the four gaps in `COMPARISON.md` outright, and soften two:
 3. **Young project.** Infisical steers production users to the commercial
    version; the OSS binary is the self-contained one.
 
-## Does this replace 1Password?
+## Does this replace your SSH agent?
 
-No — not as currently configured. The two work at different layers. 1Password
+No — not as currently configured. The two work at different layers. 1Password and Secretive
 speaks the SSH agent protocol: a signing oracle with biometric approval per
 key. Agent Vault injects headers into HTTP. SSH authentication is a
 challenge-response, not a header, so an HTTP proxy has nothing to inject and

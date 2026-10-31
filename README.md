@@ -101,7 +101,7 @@ limitation; plain `ssh-agent` has no gate at all.
 
 | | Without this kit | With this kit |
 |---|---|---|
-| SSH private key | on the VM disk | on the host, in 1Password |
+| SSH private key | on the VM disk | on the host, in your chosen agent |
 | Key passphrase | VM login keychain | never exists |
 | Agent can *use* the key | yes, silently | only while you are connected, after approval |
 | Agent can *steal* the key | yes | no — key never crosses the boundary |
@@ -185,7 +185,7 @@ is the realistic risk — not a dramatic token theft, but a bad commit landing o
 
 **Closing the scope axis** (recommended, not automated by this kit):
 
-- **Per-repo deploy keys.** Keep a deploy key per project in 1Password instead
+- **Per-repo deploy keys.** Keep a deploy key per project in your agent instead
   of your account key. Then even mid-session the VM reaches exactly one
   repository. Strongest remaining improvement.
 - **Branch protection / required review.** Makes "agent pushes to `main`"
@@ -239,7 +239,7 @@ host/setup.sh                      # derives and confirms the VM name
 host/setup.sh --vm-name my-vm      # or name it explicitly
 ```
 
-This verifies the 1Password agent, adds an SSH config block with
+This verifies your SSH agent, adds an SSH config block with
 `ForwardAgent yes` scoped to that host only, and installs your public key into
 the VM's `authorized_keys`.
 
@@ -272,7 +272,7 @@ The VM name defaults to `<github-login>-tart-test-vm`, resolved in this order:
 
 1. `gh api user --jq .login`, if `gh` is installed and authenticated
 2. the SSH agent — GitHub greets you by login over SSH, so this works with
-   only 1Password configured
+   only an agent configured, before `gh` is installed
 3. `$USER`
 
 The result is lowercased and stripped to `[a-z0-9-]`. You are always shown the
@@ -282,7 +282,8 @@ suggestion and can override it; non-interactive runs accept the default.
 
 `gh ssh-key add` needs the `admin:public_key` scope, which this kit
 deliberately removes. Add the key at <https://github.com/settings/keys> instead —
-copy it from 1Password, or `ssh-add -L` on the host.
+copy it from your agent's UI (1Password or Secretive), or run `ssh-add -L` on
+the host.
 
 ## Known limitations
 
@@ -294,7 +295,8 @@ copy it from 1Password, or `ssh-add -L` on the host.
   then: rotate it if the VM is ever shared or imaged.
 - **Agent forwarding is session-scoped, not per-command.** While you are
   connected, anything running as your user in the VM can ask the agent to sign.
-  1Password requires approval per *key*, not per *request*.
+  1Password approves per *key*, not per *request*; Secretive approves per
+  *signature*; a plain `ssh-agent` does not approve at all.
 - **Do not `tart push` a provisioned VM.** Re-run `provision.sh` in any clone,
   or it inherits this VM's host keys.
 
