@@ -92,15 +92,15 @@ Ranked by feasibility, none currently implemented or tested. All three are
 2. **Egress control — moderate.** Put the VM on an isolated network and force
    traffic through a host proxy, or allowlist with `pf` on the host. Coarser
    than per-request policy, but enough to stop naive exfiltration.
-3. **Provider token — off-the-shelf options now exist.** Requires an
-   intercepting proxy that rewrites auth headers. Credential brokers for AI
-   agents have become a real category since this kit was written; Infisical's
-   Agent Vault in particular is deployed on a separate machine from the agent,
-   which matches this host/VM split, and pi supports it natively through its
-   `httpProxy` setting. That would close this gap, and partly improve egress
-   control and request logging — though note `HTTPS_PROXY` is advisory, so real
-   egress enforcement still needs `pf` on the host. See
-   [BROKERING.md](BROKERING.md) for the survey and a spike plan. Not yet tested.
+3. **Provider token — off-the-shelf options exist.** The simplest is a
+   self-hosted LLM gateway holding the real key, which pi can use natively via
+   `custom-provider`'s `baseUrl` — no MITM certificate in the guest. It leaves
+   a low-value gateway key in the VM rather than nothing, but collapses the
+   blast radius from "bills your provider account from anywhere" to "works only
+   against a service on your Mac". An injecting proxy would cover all HTTP
+   APIs instead of just the LLM endpoint, at the cost of trusting a CA in the
+   guest. See [BROKERING.md](BROKERING.md) for the survey and a spike plan.
+   Not yet tested.
 
 ## Sources
 

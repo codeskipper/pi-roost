@@ -1,28 +1,32 @@
 # Credential brokering for pi
 
 `docs/COMPARISON.md` lists the model provider token as the one credential this
-kit cannot keep out of the VM, because pi needs it in-process. That conclusion
-is now out of date: credential-brokering proxies for AI agents have become a
-real category, and pi has the hooks to use them.
-
-This page surveys the options, records how pi integrates, and gives a spike
-plan to test whether it actually works end to end.
+kit cannot keep out of the VM, because pi needs it in-process. This page
+surveys ways to fix that, and gives a spike plan to test the most promising one.
 
 **Status: researched, not adopted.** Nothing here is implemented by the kit.
 
 ## How brokering works
 
-The agent never holds the credential. It sends a request with a placeholder or
-a capability token; a proxy the agent cannot read substitutes the real secret
-and forwards the request. A compromised agent can *use* the access while it is
-running, but cannot exfiltrate anything reusable.
+The agent never holds the real credential. Either a proxy it cannot read
+substitutes the secret into outbound requests, or the agent talks to a local
+gateway holding the secret and presents a low-value token instead. A
+compromised agent can *use* the access while it runs, but cannot exfiltrate
+anything valuable.
 
-This is the same mechanism Docker Sandboxes uses, where the sandbox "sees only
-a sentinel value".
+Two shapes, with different trade-offs:
+
+| | Injecting proxy | Gateway |
+|---|---|---|
+| Agent sends | a placeholder / sentinel | a scoped local key |
+| Mechanism | MITM, `HTTPS_PROXY` | normal HTTPS to a chosen `baseUrl` |
+| Needs a CA in the guest | **yes** | **no** |
+| Covers | any HTTP API | only what the gateway fronts |
+| Credential in the VM | none | one, but worthless off your network |
 
 ## pi's integration points
 
-Both styles work with stock pi — no pi-specific tooling required.
+Both work with stock pi — no pi-specific tooling required.
 
 **Forward proxy** (`settings.md`, `environment-variables.md`):
 
@@ -37,130 +41,133 @@ Both styles work with stock pi — no pi-specific tooling required.
 that holds the real key:
 
 ```js
-{ baseUrl: "https://ai-gateway.corp.com/google", headers: { ... } }
+{ baseUrl: "http://192.168.64.1:4000/v1", apiKey: "$GATEWAY_KEY" }
 ```
 
 ## Options
 
-| Project | Pattern | Fit here |
+| Project | Pattern | Status for this kit |
 |---|---|---|
-| [Infisical Agent Vault](https://github.com/Infisical/agent-vault) | MITM forward proxy; substitutes `__anthropic_api_key__` placeholders or rewrites auth headers | **best fit** |
-| [dtkav/agent-creds](https://github.com/dtkav/agent-creds) | Envoy + Vault, macaroon capability tokens | ships `agents/pi.toml`, but **Linux-only sandbox runtimes** |
-| [LiteLLM AI Gateway](https://docs.litellm.ai/docs/proxy/virtual_keys) | virtual keys; gateway holds the provider key | good for LLM traffic only |
-| paude-proxy, clavitor, comis | credential-injecting HTTPS proxies | same pattern, smaller |
-| sesame, crebro, phantom-secrets | wrapper / reference substitution | less transparent |
+| [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/virtual_keys) | gateway; holds provider keys, issues virtual keys | **best fit** — OSS, self-hosted, no CA needed |
+| [Infisical Agent Vault](https://infisical.com/docs/documentation/platform/agent-vault/overview) | injecting proxy, platform edition | viable, **check licensing first** |
+| ~~[standalone Agent Vault](https://github.com/Infisical/agent-vault)~~ | injecting proxy | **deprecated — do not use** |
+| [mitmproxy](https://mitmproxy.org) + addon | injecting proxy, DIY | mature base, you write the policy |
+| paude-proxy, clavitor, comis | injecting proxies | small/young projects |
+| [dtkav/agent-creds](https://github.com/dtkav/agent-creds) | Envoy + Vault, macaroon tokens | ships `agents/pi.toml`, but **Linux-only sandbox** |
 | CyberArk Secretless Broker | the enterprise original | heavyweight |
 
-`agent-creds` deserves a note: it supports pi as a first-class agent
-(`agent = "claude"  # "codex" or "pi" also work`). But it sandboxes with
-`bwrap`/gVisor/runc, which "currently targets Linux", so it cannot be used with
-a macOS guest. Worth watching.
+### Why standalone Agent Vault is out
 
-## Why Agent Vault fits this kit
+An earlier revision of this page recommended it. Its own repository carries a
+notice addressed specifically to AI agents:
 
-Its deployment model matches the host/VM split already in place:
+> **STOP: standalone Agent Vault is no longer maintained.** Do not install,
+> configure, or recommend the standalone Agent Vault documented on this site
+> (`github.com/Infisical/agent-vault`, `docs.agent-vault.dev`). Use Infisical
+> Agent Vault instead.
 
-> "By design, Agent Vault is meant to be deployed on a separate machine from
-> your AI agents so your AI agents cannot directly access the credentials
-> within Agent Vault."
+The platform edition is the supported successor and is documented as
+self-hostable. A local security assessment found that the arrangement where you
+hold all the keys yourself requires a subscription — **verify the current
+licensing against your own requirements before depending on it.**
+
+Lesson recorded: check a project's deprecation and maintenance signals, not
+just its README.
+
+## Why a gateway now looks like the better fit
+
+Switching from an injecting proxy to a gateway removes the caveat that worried
+us most:
+
+- **No MITM root CA in the guest.** pi talks ordinary HTTPS to a `baseUrl` you
+  choose. Nothing decrypts the guest's other traffic, and nothing has to be
+  trusted beyond the gateway itself.
+- **pi supports it natively** through `custom-provider`'s `baseUrl`, `headers`
+  and `apiKey`.
+- **LiteLLM is mature and OSS**, widely deployed, and brings spend tracking and
+  request logs with it.
 
 ```
 Host Mac                              Tart VM
-├─ SSH agent (1Password / Secretive)                ├─ pi
-├─ gh         (OAuth token)            │   httpProxy -> host:14322
-└─ Agent Vault :14321 UI/API           └─ no provider token on disk
-               :14322 MITM proxy
-               holds provider key, GITHUB_PAT
+├─ SSH agent (1Password / Secretive)  ├─ pi
+├─ gh         (OAuth token)           │   baseUrl -> host:4000
+└─ LiteLLM    :4000                   └─ gateway key only
+      holds the real provider key
 ```
 
-It would close one of the four gaps in `COMPARISON.md` outright, and soften two:
+**Be precise about what this achieves.** The VM still holds a credential — the
+gateway key. The win is that its value collapses: it is scoped to your gateway,
+revocable in one place, rate-limitable, and useless to anyone off your network.
+A stolen provider token bills your account and works from anywhere; a stolen
+gateway key works only against a service on your Mac. That is a large
+reduction, not an elimination.
 
-| Gap | Agent Vault |
+| Gap in `COMPARISON.md` | Gateway |
 |---|---|
-| Provider token plaintext in VM | closed — brokered |
-| No egress control | **partly** — see the caveat below |
-| No runtime observability | partly — request logging, for proxied traffic only |
+| Provider token plaintext in VM | **mostly closed** — only a low-value gateway key remains |
+| No egress control | unchanged — a gateway is not a firewall |
+| No runtime observability | improved — request and spend logs for LLM traffic |
 | Not ephemeral | unchanged |
 
-> **`HTTPS_PROXY` is advisory, not enforcement.** It is an environment variable
-> that cooperating clients honour. A compromised process ignores it and opens a
-> direct socket, so `unmatched_host_policy=deny` and the request log cover only
-> traffic that chooses to be covered. Docker Sandboxes differs here: *"All
-> outbound TCP traffic from the sandbox routes through a proxy on your host"* —
-> enforced at the network layer.
->
-> Making egress control real on Tart needs host-level enforcement. Softnet
-> (`--net-softnet`) does **not** provide it: it restricts the VM to its own MAC
-> and DHCP-assigned IP and prevents ARP spoofing, which is inter-VM isolation,
-> not a destination allowlist. That leaves `pf` on the host, anchored on the
-> vmnet bridge:
->
-> ```
-> block drop out on bridge100 from 192.168.64.0/24
-> pass   out on bridge100 from 192.168.64.0/24 to 192.168.64.1 port 14322
-> ```
->
-> Sketch only — interface naming and direction semantics need testing, and the
-> rules must survive reboots.
+An injecting proxy would cover *all* HTTP APIs rather than just the LLM
+endpoint, at the cost of a CA in the guest. If you later want `gh` brokered
+too, revisit that trade.
 
-## Caveats to settle before adopting
+## Caveats to settle
 
-1. **MITM requires trusting a CA in the VM.** You install a root certificate
-   that can decrypt all TLS from the guest. That is the mechanism, not a flaw,
-   but it is a real trust decision and it raises the value of the host as a
-   target.
-2. **pi's Copilot auth may not broker cleanly.** Brokering fits static keys.
-   pi's `github-copilot` provider stores a `ghu_` refresh token and exchanges
-   it at `api.github.com/copilot_internal/v2/token` for a short-lived `tid=`
-   token that it then writes to `auth.json`. Best case the durable `ghu_` stays
-   on the host and only the expiring token lands in the VM. **This is the open
-   question the spike exists to answer.** A direct API-key provider would
-   broker trivially.
-3. **Young project.** Infisical steers production users to the commercial
-   version; the OSS binary is the self-contained one.
+1. **Coverage is narrower.** A gateway fronts the LLM endpoint only. Anything
+   else the VM calls is unaffected.
+2. **Does pi's Copilot provider work through a gateway?** pi's `github-copilot`
+   provider has its own OAuth exchange rather than a static key. Pointing it at
+   a gateway may not work at all; the clean path is to configure pi with a
+   direct API-key provider that the gateway fronts. **This is the open question
+   the spike exists to answer.**
+3. **Virtual keys need Postgres.** LiteLLM's full key management does; a single
+   static key in `config.yaml` does not, and is enough to keep the provider key
+   off the VM.
+4. **The gateway becomes a dependency.** If it is down, pi cannot reach a model.
 
 ## Does this replace your SSH agent?
 
-No — not as currently configured. The two work at different layers. 1Password and Secretive
-speaks the SSH agent protocol: a signing oracle with biometric approval per
-key. Agent Vault injects headers into HTTP. SSH authentication is a
-challenge-response, not a header, so an HTTP proxy has nothing to inject and
-would merely `CONNECT`-tunnel port 22.
+No — not as currently configured. The two work at different layers. 1Password
+and Secretive speak the SSH agent protocol: a signing oracle with approval per
+key or per signature. A gateway or proxy handles HTTP. SSH authentication is a
+challenge-response, not a header, so neither has anything to inject.
 
-There is an architecture where you drop it. Move git from SSH to HTTPS and
-Agent Vault can broker a `GITHUB_PAT` instead. That gains **per-repo scope** —
-git-over-HTTPS puts the repository in the URL path, so path allowlisting can
-restrict the VM to specific repos, which an account-wide SSH key cannot. It
-costs the **human gate**: injection is unattended by design, so the VM can push
-whenever it likes, and the `<alias>` / `<alias>-git` split becomes meaningless
-because there is no agent to forward.
+There is an architecture where you drop it. Move git from SSH to HTTPS and an
+injecting proxy can broker a `GITHUB_PAT` instead. That gains **per-repo
+scope** — git-over-HTTPS puts the repository in the URL path, so path
+allowlisting can restrict the VM to specific repos, which an account-wide SSH
+key cannot. It costs the **human gate**: injection is unattended by design, so
+the VM can push whenever it likes, and the `<alias>` / `<alias>-git` split
+becomes meaningless because there is no agent to forward.
 
 | | Git auth | Human gate | Per-repo scope | Egress governed |
 |---|---|---|---|---|
-| **A. As shipped** | SSH + 1Password | yes | no | no |
-| **B. HTTP only** | HTTPS + Agent Vault | no | yes | only with `pf` |
+| **A. As shipped** | SSH + agent | yes | no | no |
+| **B. HTTP only** | HTTPS + injecting proxy | no | yes | only with `pf` |
 | **C. Scoped SSH** | SSH + per-repo deploy keys | yes | yes | no |
 
 Note what does *not* change in B. Inbound SSH from host to VM stays — that is
-the control channel, and Agent Vault never sees it. Outbound SSH to GitHub is
-not blocked either; it simply becomes useless, because no key and no forwarded
+the control channel, and no proxy sees it. Outbound SSH to GitHub is not
+blocked either; it simply becomes useless, because no key and no forwarded
 agent remain in the VM. The capability disappears with the credential, not with
 a firewall rule.
 
-1Password stays useful under every option: it holds the key used to reach the
-VM itself, the Agent Vault master password, and your non-agent secrets. So the
-real question is not "keep or drop 1Password" but "does git authentication move
-from the SSH layer to the HTTP layer".
+Your SSH agent stays useful under every option: it holds the key used to reach
+the VM itself and your non-agent secrets. So the real question is not "keep or
+drop it" but "does git authentication move from the SSH layer to the HTTP
+layer".
 
 This is decidable without the spike — it is an architecture choice. The spike
-only answers whether pi's provider token can be brokered at all.
+only answers whether pi's provider traffic can be brokered at all.
 
 ---
 
 # Spike plan
 
-Timeboxed test to answer one question: **can pi in the VM work with no provider
-credential on its disk?**
+Timeboxed test of one question: **can pi in the VM reach a model with no
+provider credential on its disk?**
 
 Run phases in order. Each has an explicit pass condition. Stop at the first
 failure and record it — a negative result is a valid outcome.
@@ -176,139 +183,94 @@ In the VM:
 ```bash
 cp ~/.pi/agent/auth.json ~/.pi/agent/auth.json.prespike
 cp ~/.pi/agent/settings.json ~/.pi/agent/settings.json.prespike
-python3 -c "import json;d=json.load(open('$HOME/.pi/agent/auth.json'));print(list(d.keys()))"
-ipconfig getifaddr en0           # VM address
 netstat -rn | awk '/^default/{print $2; exit}'   # host address, e.g. 192.168.64.1
 ```
 
-**Pass:** you have backups and know the host IP from inside the VM.
+**Pass:** backups exist and you know the host IP from inside the VM.
 
-## Phase 1 — Install Agent Vault on the host
+## Phase 1 — Run the gateway on the host
 
-On the **host Mac** (never in the VM — that would defeat the point):
-
-```bash
-curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL https://get.agent-vault.dev | sh
-agent-vault server          # set a master password when prompted
-```
-
-Confirm it listens on an interface the VM can reach, not just `127.0.0.1`.
-Check the server flags for a bind address; the VM cannot reach host loopback.
+On the **host Mac**, with a `config.yaml` holding the real provider key and a
+single static gateway key. Bind to an interface the VM can reach, not
+loopback:
 
 ```bash
-lsof -nP -iTCP:14322 -sTCP:LISTEN
+litellm --config config.yaml --host 0.0.0.0 --port 4000
+lsof -nP -iTCP:4000 -sTCP:LISTEN
 ```
 
-**Pass:** port 14322 is listening on `0.0.0.0` or the `192.168.64.1` interface.
+**Pass:** port 4000 listening on `0.0.0.0` or the `192.168.64.1` interface.
 
-## Phase 2 — Prove plain proxying works
-
-From the **VM**, with no credentials involved:
+## Phase 2 — Prove reachability from the VM
 
 ```bash
-curl -x http://192.168.64.1:14322 -sS -o /dev/null -w '%{http_code}\n' http://example.com
+curl -sS http://192.168.64.1:4000/health -o /dev/null -w '%{http_code}\n'
 ```
 
-**Pass:** `200`. **Fail:** connection refused means a bind-address or firewall
-problem — fix before continuing.
+**Pass:** a response. **Fail:** connection refused means bind address or
+firewall — fix before continuing.
 
-## Phase 3 — Install the CA and prove HTTPS interception
-
-Export the CA on the host (`agent-vault ca`), copy it to the VM, then:
+## Phase 3 — Prove a completion works, outside pi
 
 ```bash
-sudo security add-trusted-cert -d -r trustRoot \
-  -k /Library/Keychains/System.keychain ~/agent-vault-ca.pem
-curl -x http://192.168.64.1:14322 -sS https://example.com -o /dev/null -w '%{http_code}\n'
+curl -sS http://192.168.64.1:4000/v1/chat/completions \
+  -H "Authorization: Bearer $GATEWAY_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"<model-group>","messages":[{"role":"user","content":"ping"}]}'
 ```
 
-**Pass:** `200` with no TLS error. **Record this**: you have now added a root CA
-to the VM, which Phase 7 must undo if you abandon the spike.
+**Pass:** a model reply, while the VM only ever sent the gateway key. This
+proves the mechanism independently of pi.
 
-## Phase 4 — Prove credential injection, outside pi
+## Phase 4 — Point pi at the gateway
 
-Store a throwaway credential in Agent Vault — use a GitHub PAT with no scopes,
-not your real token — and define a service for `api.github.com`. Then from the
-VM:
+Configure a custom provider in pi with `baseUrl` set to the gateway and the
+gateway key as `apiKey`. Send one trivial prompt.
 
-```bash
-curl -x http://192.168.64.1:14322 -sS https://api.github.com/user \
-  -H "Authorization: Bearer __github_token__"
-```
+**Pass:** pi works. **Fail:** capture the error — if it is the Copilot OAuth
+exchange (caveat 2), switch pi to a direct API-key provider and retry before
+concluding.
 
-**Pass:** a real API response, while the VM only ever sent the placeholder.
-This proves the whole mechanism independently of pi. If it fails, the problem
-is Agent Vault configuration, not pi.
-
-## Phase 5 — Point pi at the proxy, credentials unchanged
-
-In the VM, edit `~/.pi/agent/settings.json`:
-
-```json
-{ "httpProxy": "http://192.168.64.1:14322" }
-```
-
-Start pi and send one trivial prompt.
-
-**Pass:** pi works normally. This isolates CA/TLS problems from brokering
-problems — the token is still local, so only transport changed.
-**Fail:** pi cannot reach the provider through the proxy; capture the error and
-stop. Brokering cannot work if transport does not.
-
-## Phase 6 — The decisive test: remove the credential
-
-Put the real provider credential into Agent Vault on the host. Then in the VM:
+## Phase 5 — Remove the provider credential
 
 ```bash
 python3 - <<'EOF'
 import json, pathlib
 p = pathlib.Path.home()/'.pi/agent/auth.json'
 d = json.loads(p.read_text())
-d['github-copilot']['refresh'] = '__copilot_refresh_token__'
-d['github-copilot']['access']  = ''
-d['github-copilot']['expires'] = 0
+d.pop('github-copilot', None)        # or blank the provider you brokered
 p.write_text(json.dumps(d, indent=1))
 EOF
 ```
 
 Restart pi and send a prompt.
 
-**Pass:** pi works with no real credential on the VM disk. Brokering is viable;
-the gap in `COMPARISON.md` can be closed.
+**Pass:** pi works with no provider credential on the VM disk.
 
-**Partial:** pi re-authenticates and writes a fresh `tid=` token to
-`auth.json`, but the durable `ghu_` never appears. Still a win — the permanent
-credential stays on the host and only a ~24h token lands in the VM. Record
-exactly what ends up in `auth.json`.
+## Phase 6 — Verify the negative
 
-**Fail:** pi cannot start the Copilot exchange through a placeholder. Expected
-outcome for caveat 2. Fall back to testing a direct API-key provider
-(Anthropic/OpenAI) with a dummy key, which should broker cleanly.
-
-## Phase 7 — Verify the negative, then decide
-
-Prove the VM genuinely cannot obtain the secret:
+Two checks, both falsifiable:
 
 ```bash
-grep -rIoE '\b(sk-|gho_|ghu_)[A-Za-z0-9_-]{16,}' ~/.pi ~/.config 2>/dev/null || echo "no real tokens in VM"
-curl -x http://192.168.64.1:14322 -sS https://example.org -o /dev/null -w '%{http_code}\n'   # egress policy
+grep -rIoE '\b(sk-|gho_|ghu_)[A-Za-z0-9_-]{16,}' ~/.pi ~/.config 2>/dev/null \
+  || echo "no provider tokens in VM"
 ```
 
-Then set `unmatched_host_policy=deny` and confirm unlisted hosts return 403.
+Then **revoke or change the gateway key on the host** and confirm pi stops
+working. If it keeps working, it is not using the gateway and the result is
+void.
 
 **Rollback if abandoning:**
 
 ```bash
 cp ~/.pi/agent/auth.json.prespike ~/.pi/agent/auth.json
 cp ~/.pi/agent/settings.json.prespike ~/.pi/agent/settings.json
-sudo security delete-certificate -c "Agent Vault" /Library/Keychains/System.keychain
 ```
 
-The CA removal matters most — leaving a trusted MITM root in the VM for an
-abandoned experiment is worse than the problem you set out to fix.
+No CA to remove — one of the reasons to prefer the gateway shape.
 
 ## Recording the result
 
-Whatever happens, append the outcome of Phase 6 to this file. The open question
-is narrow and factual, and the answer determines whether the kit grows a
-`--broker` path or keeps documenting the provider token as residual risk.
+Append the outcome of Phases 4–5 to this file. The answer determines whether
+the kit grows a `--broker` path or keeps documenting the provider token as
+residual risk.
