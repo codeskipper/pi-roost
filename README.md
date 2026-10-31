@@ -248,8 +248,10 @@ copy it from 1Password, or `ssh-add -L` on the host.
 
 - **Model-provider credentials stay in the VM.** pi holds its Copilot/API token
   in `~/.pi/agent/auth.json` in plaintext, because it needs it in-process.
-  Brokering that requires an intercepting proxy (what Docker Sandboxes builds).
-  Rotate it if the VM is ever shared or imaged.
+  Brokering it requires an intercepting proxy (what Docker Sandboxes builds).
+  Off-the-shelf brokers now exist and pi supports them via `httpProxy` — see
+  [docs/BROKERING.md](docs/BROKERING.md), researched but not adopted. Until
+  then: rotate it if the VM is ever shared or imaged.
 - **Agent forwarding is session-scoped, not per-command.** While you are
   connected, anything running as your user in the VM can ask the agent to sign.
   1Password requires approval per *key*, not per *request*.

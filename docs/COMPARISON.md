@@ -49,7 +49,8 @@ agent forwarding into a sandbox does not provide.
 any process in the VM, and survives reboots. Docker's proxy injection makes
 exactly this class of credential unreadable from inside the sandbox. This is
 the one axis where `sbx` is categorically better, and this kit documents it as
-accepted residual risk rather than solving it.
+accepted residual risk rather than solving it. A third-party credential broker
+could close it — see [BROKERING.md](BROKERING.md).
 
 **No egress control.** Docker routes all outbound TCP through a host proxy and
 enforces network policy on it. This VM can reach anything its network can.
@@ -87,9 +88,14 @@ Ranked by feasibility, none currently implemented:
 2. **Egress control — moderate.** Put the VM on an isolated network and force
    traffic through a host proxy, or allowlist with `pf` on the host. Coarser
    than per-request policy, but enough to stop naive exfiltration.
-3. **Provider token — hard.** Requires an intercepting proxy that rewrites auth
-   headers. Replicating what Docker built is the strongest argument for using
-   `sbx` wherever macOS is not required.
+3. **Provider token — off-the-shelf options now exist.** Requires an
+   intercepting proxy that rewrites auth headers. Credential brokers for AI
+   agents have become a real category since this kit was written; Infisical's
+   Agent Vault in particular is deployed on a separate machine from the agent,
+   which matches this host/VM split, and pi supports it natively through its
+   `httpProxy` setting. That would close this gap *and* egress control *and*
+   request logging — see [BROKERING.md](BROKERING.md) for the survey and a
+   spike plan. Not yet tested.
 
 ## Sources
 
