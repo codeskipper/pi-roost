@@ -48,7 +48,7 @@ that holds the real key:
 
 | Project | Pattern | Status for this kit |
 |---|---|---|
-| [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/virtual_keys) | gateway; holds provider keys, issues virtual keys | **best fit** — OSS, self-hosted, no CA needed |
+| [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/virtual_keys) | gateway; holds provider keys, issues virtual keys | **best fit** — OSS, self-hosted, no CA needed, native `github_copilot` provider |
 | [Infisical Agent Vault](https://infisical.com/docs/documentation/platform/agent-vault/overview) | injecting proxy, platform edition | viable, **check licensing first** |
 | ~~[standalone Agent Vault](https://github.com/Infisical/agent-vault)~~ | injecting proxy | **deprecated — do not use** |
 | [mitmproxy](https://mitmproxy.org) + addon | injecting proxy, DIY | mature base, you write the policy |
@@ -113,19 +113,51 @@ An injecting proxy would cover *all* HTTP APIs rather than just the LLM
 endpoint, at the cost of a CA in the guest. If you later want `gh` brokered
 too, revisit that trade.
 
+## What a gateway does and does not separate
+
+A gateway fronts LLM traffic. It has nothing to do with git, SSH or the GitHub
+API, so it separates **one** of this kit's three credentials. Full separation
+takes all three mechanisms together:
+
+| Credential | Mechanism | Ends up |
+|---|---|---|
+| SSH key | agent forwarding (1Password / Secretive) | host, non-exportable |
+| `gh` OAuth token | `gh auth logout`; run `gh -R owner/repo` on the host | host |
+| Copilot / provider token | **the gateway** | host |
+| *gateway key* | — | **VM, low value** |
+
+After all three, the VM holds exactly one secret: a key that works only against
+a service on your Mac.
+
+### Licensing
+
+Unlike the deprecated standalone Agent Vault, the arrangement where you hold
+your own keys is the free one. LiteLLM's open-source gateway is documented as
+*"free to self-host, forever"*, with virtual keys, spend tracking, budgets,
+rate limits and request logging in the open-source tier. Enterprise adds SSO,
+SCIM, OIDC/JWT, audit logs and secret-manager rotation — governance features
+this kit does not need. Verify against current terms before depending on it.
+
 ## Caveats to settle
 
 1. **Coverage is narrower.** A gateway fronts the LLM endpoint only. Anything
    else the VM calls is unaffected.
-2. **Does pi's Copilot provider work through a gateway?** pi's `github-copilot`
-   provider has its own OAuth exchange rather than a static key. Pointing it at
-   a gateway may not work at all; the clean path is to configure pi with a
-   direct API-key provider that the gateway fronts. **This is the open question
-   the spike exists to answer.**
+2. **pi's Copilot provider: relocate, don't broker.** pi's `github-copilot`
+   provider runs its own OAuth exchange rather than using a static key, so
+   pointing it at a gateway as-is may not work. The answer is not to proxy that
+   flow but to move it: LiteLLM has a native `github_copilot` provider whose
+   authenticator performs the same device-code flow and calls the same
+   `api.github.com/copilot_internal/v2/token` endpoint pi does. The gateway
+   holds the `ghu_` and refreshes the short-lived token itself; pi talks plain
+   OpenAI-format to the gateway. **Still untested here** — that is Phase 4.
 3. **Virtual keys need Postgres.** LiteLLM's full key management does; a single
    static key in `config.yaml` does not, and is enough to keep the provider key
    off the VM.
 4. **The gateway becomes a dependency.** If it is down, pi cannot reach a model.
+5. **Terms of service are unchanged, not improved.** Using Copilot from a
+   third-party client is the same question whether pi calls it directly or via
+   a gateway. LiteLLM's docs describe per-person use against that person's own
+   Copilot plan.
 
 ## Does this replace your SSH agent?
 
@@ -224,12 +256,16 @@ proves the mechanism independently of pi.
 
 ## Phase 4 — Point pi at the gateway
 
-Configure a custom provider in pi with `baseUrl` set to the gateway and the
-gateway key as `apiKey`. Send one trivial prompt.
+Configure the gateway's `github_copilot` provider on the host first and
+complete its device-code login there, so the `ghu_` lives on the host. Then in
+the VM configure a custom provider in pi with `baseUrl` set to the gateway and
+the gateway key as `apiKey`. Send one trivial prompt.
 
-**Pass:** pi works. **Fail:** capture the error — if it is the Copilot OAuth
-exchange (caveat 2), switch pi to a direct API-key provider and retry before
-concluding.
+**Pass:** pi works, and the Copilot OAuth now belongs to the gateway rather
+than the VM. **Fail:** capture the error — if the gateway cannot serve Copilot
+models, fall back to a direct API-key provider (Anthropic/OpenAI) fronted by
+the gateway, which should broker cleanly, and record that Copilot needs the
+direct route.
 
 ## Phase 5 — Remove the provider credential
 
