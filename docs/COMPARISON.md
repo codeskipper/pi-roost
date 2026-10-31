@@ -93,9 +93,10 @@ Ranked by feasibility, none currently implemented:
    agents have become a real category since this kit was written; Infisical's
    Agent Vault in particular is deployed on a separate machine from the agent,
    which matches this host/VM split, and pi supports it natively through its
-   `httpProxy` setting. That would close this gap *and* egress control *and*
-   request logging — see [BROKERING.md](BROKERING.md) for the survey and a
-   spike plan. Not yet tested.
+   `httpProxy` setting. That would close this gap, and partly improve egress
+   control and request logging — though note `HTTPS_PROXY` is advisory, so real
+   egress enforcement still needs `pf` on the host. See
+   [BROKERING.md](BROKERING.md) for the survey and a spike plan. Not yet tested.
 
 ## Sources
 
