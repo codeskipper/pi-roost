@@ -114,7 +114,7 @@ password XOR'd against a published key. It also starts with the SSH host keys
 that were baked in at image build time, shared by every other clone of the same
 image.
 
-`guest/provision.sh` exists to undo exactly these three things. Running it is
+`guest/macos/provision.sh` exists to undo exactly these three things. Running it is
 not hardening-on-top-of-a-secure-default; it is the step that makes a
 CI-oriented image safe to hold credentials.
 
@@ -131,5 +131,5 @@ Several assumptions in this setup turned out to be wrong when tested:
   access boundary.
 - `ssh -T git@github.com` exits **1** on success.
 
-`guest/verify.sh` encodes these as executable checks. Prefer running it over
+`guest/macos/verify.sh` encodes these as executable checks. Prefer running it over
 reasoning about what the configuration ought to do.

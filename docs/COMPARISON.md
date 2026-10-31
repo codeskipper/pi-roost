@@ -68,8 +68,11 @@ the SSH key this kit is arguably ahead, because it removes capability rather
 than hiding values.
 
 **As a general agent sandbox: not equivalent.** Egress control, ephemerality
-and the provider token are three real gaps, and the first two are architectural
-rather than oversights.
+and the provider token are three real gaps. None are currently implemented,
+but all three now have identified paths — see
+[What would close the gaps](#what-would-close-the-gaps). The difference from
+`sbx` is therefore integration and maintenance rather than capability: `sbx`
+ships these assembled, here you would own the result.
 
 The defensible claim is therefore narrower than "an alternative to Docker
 Sandboxes". It is:
@@ -79,7 +82,8 @@ Sandboxes". It is:
 
 ## What would close the gaps
 
-Ranked by feasibility, none currently implemented:
+Ranked by feasibility, none currently implemented or tested. All three are
+**host-side**, so they would carry over unchanged to a Linux guest.
 
 1. **Ephemerality — very achievable.** `tart clone` a provisioned golden image
    per task, work, then `tart delete`. `provision.sh` already makes a clean

@@ -30,7 +30,7 @@ Usage: host/create-vm.sh [options]
   -h, --help      Show this help
 
 The cirruslabs images ship with auto-login enabled and the password 'admin'.
-guest/provision.sh removes both - run it on every fresh clone.
+guest/macos/provision.sh removes both - run it on every fresh clone.
 
 After it boots, run:
   host/setup.sh --vm-name <name>

@@ -4,9 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "$SCRIPT_DIR/../lib/common.sh" ]; then
-  # shellcheck source=../lib/common.sh
-  . "$SCRIPT_DIR/../lib/common.sh"
+if [ -f "$SCRIPT_DIR/../../lib/common.sh" ]; then
+  # shellcheck source=../../lib/common.sh
+  . "$SCRIPT_DIR/../../lib/common.sh"
 else
   # Copied without lib/: keep working, but --hostname becomes mandatory.
   say()  { printf '  %s\n' "$*"; }
@@ -80,7 +80,7 @@ if [ "$REGEN_HOST_KEYS" -eq 1 ]; then
   # Base images ship identical host keys; every clone would be impersonatable.
   sudo rm -f /etc/ssh/ssh_host_*
   sudo ssh-keygen -A >/dev/null
-  echo "regenerated $(date -u '+%Y-%m-%dT%H:%M:%SZ')" | sudo tee /etc/ssh/.pi-kit-hostkeys-regenerated >/dev/null
+  echo "regenerated $(date -u '+%Y-%m-%dT%H:%M:%SZ')" | sudo tee /etc/ssh/.pi-roost-hostkeys-regenerated >/dev/null
   sudo launchctl kickstart -k system/com.openssh.sshd >/dev/null 2>&1 || true
   say "new fingerprint: $(ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | awk '{print $2}')"
   say "NOTE: hosts connecting here will see a new fingerprint once (expected)"
@@ -168,7 +168,7 @@ if [ "$DISABLE_PASSWORD_AUTH" -eq 1 ]; then
     echo "  Run host/setup.sh first, or you will lock yourself out." >&2
     exit 1
   fi
-  sudo tee /etc/ssh/sshd_config.d/99-pi-kit-harden.conf >/dev/null <<'EOF'
+  sudo tee /etc/ssh/sshd_config.d/99-pi-roost-harden.conf >/dev/null <<'EOF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 EOF

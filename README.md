@@ -1,12 +1,15 @@
-# pi-kit-macOS
+# pi-roost
 
-Reproducible setup for running the **pi** coding agent inside a **Tart** macOS
-VM, with the SSH key held on the host and never written into the VM.
+**A safe roost for the pi coding agent** — run it in a Tart VM on your Mac,
+with credentials kept on the host and never written into the VM.
 
-Fixed assumptions: pi as the agent, Tart as the hypervisor, macOS as both host
-and guest. The **credential store is pluggable** — 1Password, Secretive, or a
-plain `ssh-agent` all work; see [Choosing an SSH agent](#choosing-an-ssh-agent)
-for the trade-offs.
+The host is macOS, and that is a fixed assumption: the whole credential plane
+(SSH agent, and later a broker and firewall rules) is host-side and
+macOS-specific. Two things are pluggable:
+
+- **The credential store** — 1Password, Secretive, or a plain `ssh-agent`.
+  See [Choosing an SSH agent](#choosing-an-ssh-agent).
+- **The guest OS** — macOS today, Linux planned. See [Roadmap](#roadmap).
 
 The agent runs with full root inside the VM. That is fine — the security comes
 from what is *not* reachable from in there, not from constraining the agent.
@@ -14,7 +17,11 @@ This is the same model Docker Sandboxes uses: the VM is the trust boundary, and
 credentials live on the other side of it. Docker Sandboxes cannot run a macOS
 guest, so this kit applies that model where `sbx` does not reach — see
 [docs/COMPARISON.md](docs/COMPARISON.md) for an honest scorecard, including the
-three axes where `sbx` is better.
+axes where `sbx` is better.
+
+> Not affiliated with the pi project, Apple, 1Password, Infisical or Cirrus
+> Labs. "pi" refers to the coding agent this kit runs; macOS and Mac are
+> trademarks of Apple Inc.
 
 ## Choosing an SSH agent
 
@@ -199,6 +206,33 @@ an obvious gap. For how this compares with Docker Sandboxes — including
 egress control, ephemerality and the provider token, where it loses — see
 [docs/COMPARISON.md](docs/COMPARISON.md).
 
+## Roadmap
+
+**Guest OS is pluggable; the host is not.** macOS host is fixed — the
+credential plane is host-side and macOS-specific. The guest half is
+`guest/<os>/provision.sh` and `verify.sh` only, which is why they live in
+`guest/macos/`.
+
+macOS guest is implemented, and is the case no other tool serves. Linux guest
+is planned: the host-side stack is guest-agnostic and would be inherited
+unchanged, leaving only a Linux provisioner. **Until that exists, for Linux
+guests prefer Docker `sbx`**, which ships credential injection and
+network-enforced egress integrated and maintained.
+
+Three gaps against `sbx` have identified paths, none yet implemented or
+tested:
+
+| Gap | Path | Status |
+|---|---|---|
+| Ephemerality | `tart clone` a golden image per task, then `tart delete` | not built; `provision.sh` + `create-vm.sh` are most of it |
+| Egress enforcement | `pf` anchor on the vmnet bridge | sketched, untested |
+| Provider token | a credential broker via pi's `httpProxy` | researched with a spike plan — [docs/BROKERING.md](docs/BROKERING.md) |
+
+All three are **host-side**, so building them for the macOS guest makes Linux
+guest support cheap later. What separates this from `sbx` is not capability but
+integration: `sbx` ships these assembled and maintained, while here you would
+own the result.
+
 ## Requirements
 
 - macOS host with [Tart](https://tart.run) and a macOS guest VM
@@ -214,7 +248,7 @@ egress control, ephemerality and the provider token, where it loses — see
 Clone on the **host**:
 
 ```bash
-git clone <this-repo> && cd pi-kit-macOS
+git clone <this-repo> && cd pi-roost
 ```
 
 ### 0. Create the VM (optional)
@@ -248,9 +282,9 @@ the VM's `authorized_keys`.
 Copy the **whole repo** (the scripts share `lib/`):
 
 ```bash
-rsync -a --exclude .git ./ <vm-alias>:~/pi-kit-macOS/
+rsync -a --exclude .git ./ <vm-alias>:~/pi-roost/
 ssh <vm-alias>
-cd pi-kit-macOS && ./guest/provision.sh
+cd pi-roost && ./guest/macos/provision.sh
 ```
 
 `provision.sh` derives the same `<login>-tart-test-vm` name, or takes
@@ -261,7 +295,7 @@ that works with a forwarded agent.
 ### 3. Verify
 
 ```bash
-./guest/verify.sh            # add --network to test GitHub auth
+./guest/macos/verify.sh            # add --network to test GitHub auth
 ```
 
 Prints a PASS/WARN/FAIL audit of the whole posture. Read-only; run it any time.

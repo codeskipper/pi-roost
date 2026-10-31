@@ -101,8 +101,8 @@ step "Writing SSH config block for '$ALIAS'"
 mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"
 touch "$SSH_CONFIG"; chmod 600 "$SSH_CONFIG"
 
-BEGIN="# >>> pi-kit-macOS: $ALIAS >>>"
-END="# <<< pi-kit-macOS: $ALIAS <<<"
+BEGIN="# >>> pi-roost: $ALIAS >>>"
+END="# <<< pi-roost: $ALIAS <<<"
 
 if [ "$USE_TART_IP" -eq 1 ]; then
   command -v tart >/dev/null || die "tart not found in PATH"
@@ -186,10 +186,10 @@ Next:
      (gh ssh-key add needs admin:public_key, which this kit removes)
 
   2. Provision the guest:
-       rsync -a --exclude .git ./ ${ALIAS}-git:~/pi-kit-macOS/
+       rsync -a --exclude .git ./ ${ALIAS}-git:~/pi-roost/
        ssh ${ALIAS}-git
-       cd pi-kit-macOS && ./guest/provision.sh --logout-gh
+       cd pi-roost && ./guest/macos/provision.sh --logout-gh
 
   3. Audit:
-       ssh ${ALIAS}-git ./pi-kit-macOS/guest/verify.sh --network
+       ssh ${ALIAS}-git ./pi-roost/guest/macos/verify.sh --network
 EOF

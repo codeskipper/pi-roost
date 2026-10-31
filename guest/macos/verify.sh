@@ -11,7 +11,7 @@ warn() { printf '  [ WARN ]  %s\n' "$*"; WARN=$((WARN+1)); }
 bad()  { printf '  [ FAIL ]  %s\n' "$*"; FAIL=$((FAIL+1)); }
 sec()  { printf '\n%s\n' "$*"; }
 
-printf 'pi-kit-macOS posture audit  (%s)\n' "$(date '+%Y-%m-%d %H:%M')"
+printf 'pi-roost posture audit  (%s)\n' "$(date '+%Y-%m-%d %H:%M')"
 
 sec "Identity"
 HN="$(scutil --get LocalHostName 2>/dev/null || echo '?')"
@@ -21,7 +21,7 @@ case "$HN" in
   *) ok "hostname: $HN" ;;
 esac
 
-if [ -f /etc/ssh/.pi-kit-hostkeys-regenerated ]; then
+if [ -f /etc/ssh/.pi-roost-hostkeys-regenerated ]; then
   ok "SSH host keys regenerated for this VM ($(ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null | awk '{print $2}'))"
 else
   warn "host keys may be inherited from the base image - clones could impersonate this VM"
