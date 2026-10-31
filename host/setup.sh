@@ -12,8 +12,10 @@ VM_HOST=""
 VM_USER="admin"
 ALIAS=""
 USE_TART_IP=0
+IDENTITY_AGENT=""
 
 OP_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+SECRETIVE_SOCK="$HOME/Library/Containers/com.maxgoedjen.Secretive.SecretAgent/Data/socket.ssh"
 SSH_CONFIG="$HOME/.ssh/config"
 
 usage() {
@@ -27,6 +29,9 @@ Usage: host/setup.sh [options]
   --alias NAME       SSH alias to create (default: --vm-name value)
   --user USER        VM username (default: admin)
   --tart-ip          Resolve the address via `tart ip` instead of DNS
+  --identity-agent PATH
+                     SSH agent socket holding your key. Auto-detected:
+                     1Password, then Secretive, then $SSH_AUTH_SOCK.
   -h, --help         Show this help
 
 Examples:
@@ -43,26 +48,39 @@ while [ $# -gt 0 ]; do
     --alias)   ALIAS="$2";   shift 2 ;;
     --user)    VM_USER="$2"; shift 2 ;;
     --tart-ip) USE_TART_IP=1; shift ;;
+    --identity-agent) IDENTITY_AGENT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage; exit 2 ;;
   esac
 done
 
-step "Checking the 1Password SSH agent"
-if [ -S "$OP_SOCK" ]; then
-  say "socket present"
-else
-  die "1Password agent socket not found at:
-    $OP_SOCK
-  Enable it in 1Password: Settings -> Developer -> Use the SSH agent"
-fi
+assert_host
 
-if ! SSH_AUTH_SOCK="$OP_SOCK" ssh-add -l >/dev/null 2>&1; then
-  die "agent reachable but holds no keys. Add an SSH key item in 1Password."
+step "Locating an SSH agent"
+if [ -n "$IDENTITY_AGENT" ]; then
+  [ -S "$IDENTITY_AGENT" ] || die "no socket at: $IDENTITY_AGENT"
+  AGENT_NAME="specified"
+elif [ -S "$OP_SOCK" ]; then
+  IDENTITY_AGENT="$OP_SOCK"; AGENT_NAME="1Password"
+elif [ -S "$SECRETIVE_SOCK" ]; then
+  IDENTITY_AGENT="$SECRETIVE_SOCK"; AGENT_NAME="Secretive (Secure Enclave)"
+elif [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "${SSH_AUTH_SOCK:-}" ]; then
+  IDENTITY_AGENT="$SSH_AUTH_SOCK"; AGENT_NAME="ssh-agent from the environment"
+else
+  die "no SSH agent found. Enable one of:
+    1Password  -> Settings > Developer > Use the SSH agent
+    Secretive  -> brew install secretive, then create a key
+  or pass --identity-agent PATH"
 fi
-SSH_AUTH_SOCK="$OP_SOCK" ssh-add -l | sed 's/^/  /'
-# Everything below (including GitHub login detection) talks to the 1Password agent.
-export SSH_AUTH_SOCK="$OP_SOCK"
+say "using $AGENT_NAME"
+say "$IDENTITY_AGENT"
+
+if ! SSH_AUTH_SOCK="$IDENTITY_AGENT" ssh-add -l >/dev/null 2>&1; then
+  die "agent reachable but holds no keys. Add or create a key first."
+fi
+SSH_AUTH_SOCK="$IDENTITY_AGENT" ssh-add -l | sed 's/^/  /'
+# Everything below (including GitHub login detection) talks to that agent.
+export SSH_AUTH_SOCK="$IDENTITY_AGENT"
 
 step "Naming"
 if [ -z "$VM_NAME" ]; then
@@ -83,8 +101,8 @@ step "Writing SSH config block for '$ALIAS'"
 mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"
 touch "$SSH_CONFIG"; chmod 600 "$SSH_CONFIG"
 
-BEGIN="# >>> pi-kit-1pass-tart-macos: $ALIAS >>>"
-END="# <<< pi-kit-1pass-tart-macos: $ALIAS <<<"
+BEGIN="# >>> pi-kit-macOS: $ALIAS >>>"
+END="# <<< pi-kit-macOS: $ALIAS <<<"
 
 if [ "$USE_TART_IP" -eq 1 ]; then
   command -v tart >/dev/null || die "tart not found in PATH"
@@ -107,7 +125,7 @@ $TARGET
   User $VM_USER
   HostKeyAlias $ALIAS
   ForwardAgent yes
-  IdentityAgent \"$OP_SOCK\"
+  IdentityAgent \"$IDENTITY_AGENT\"
 $END"
 
 if grep -qF "$BEGIN" "$SSH_CONFIG"; then
@@ -168,10 +186,10 @@ Next:
      (gh ssh-key add needs admin:public_key, which this kit removes)
 
   2. Provision the guest:
-       rsync -a --exclude .git ./ ${ALIAS}-git:~/pi-kit-1pass-tart-macos/
+       rsync -a --exclude .git ./ ${ALIAS}-git:~/pi-kit-macOS/
        ssh ${ALIAS}-git
-       cd pi-kit-1pass-tart-macos && ./guest/provision.sh --logout-gh
+       cd pi-kit-macOS && ./guest/provision.sh --logout-gh
 
   3. Audit:
-       ssh ${ALIAS}-git ./pi-kit-1pass-tart-macos/guest/verify.sh --network
+       ssh ${ALIAS}-git ./pi-kit-macOS/guest/verify.sh --network
 EOF

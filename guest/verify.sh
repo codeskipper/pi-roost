@@ -11,7 +11,7 @@ warn() { printf '  [ WARN ]  %s\n' "$*"; WARN=$((WARN+1)); }
 bad()  { printf '  [ FAIL ]  %s\n' "$*"; FAIL=$((FAIL+1)); }
 sec()  { printf '\n%s\n' "$*"; }
 
-printf 'pi-kit-1pass-tart-macos posture audit  (%s)\n' "$(date '+%Y-%m-%d %H:%M')"
+printf 'pi-kit-macOS posture audit  (%s)\n' "$(date '+%Y-%m-%d %H:%M')"
 
 sec "Identity"
 HN="$(scutil --get LocalHostName 2>/dev/null || echo '?')"

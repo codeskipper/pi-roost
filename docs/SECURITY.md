@@ -9,8 +9,8 @@ file and environment variable owned by that user. The design question is not
 
 | Asset | Where it lives | Reachable from the VM? |
 |---|---|---|
-| SSH private key | host, inside 1Password | **No.** Only signatures cross, and only while a `-git` session is open. |
-| SSH key passphrase | never materialises | **No.** |
+| SSH private key | host, in your chosen agent | **No.** Only signatures cross, and only while a `-git` session is open. |
+| SSH key passphrase | never materialises (1Password/Secretive) | **No.** |
 | `gh` OAuth token | host only, after `provision.sh --logout-gh` | **No.** Run `gh` on the host with `-R owner/repo`. |
 | Model provider token | `~/.pi/agent/auth.json`, plaintext | Yes, always. |
 | Account password | hashed, `/etc/kcpassword` removed | No. |
@@ -19,8 +19,16 @@ file and environment variable owned by that user. The design question is not
 
 **Agent forwarding is session-scoped — but damage is not.** While you are
 connected, any process running as your user in the VM can ask the forwarded
-agent to sign. 1Password prompts once per *key*, not per *request*. The key
-itself can never be exfiltrated, so no credential survives the session.
+agent to sign. How strong that gate is depends on the agent you chose:
+
+| Agent | Gate |
+|---|---|
+| 1Password | approval per *key*, per session — a standing capability once approved |
+| Secretive | approval per *signature* — *"any use of one of your SSH keys on the remote host must be authenticated through Secretive"* |
+| plain `ssh-agent` | none — any process signs silently |
+
+The key itself can never be exfiltrated with the first two, so no credential
+survives the session.
 
 Do not over-read that. Bounded capability is not bounded damage: anything
 pushed during an open window stays pushed. The session boundary protects the
@@ -29,7 +37,14 @@ pushed during an open window stays pushed. The session boundary protects the
 (so it cannot reach `main` unreviewed).
 
 Mitigation in practice: connect with the non-forwarding alias by default, and
-use the `-git` alias only when you intend to push.
+use the `-git` alias only when you intend to push. Secretive narrows this
+further by requiring a human touch for every signature.
+
+**Biometric gates live at the credential layer, not the UI layer.** A terminal
+that requires Touch ID to unlock (iTerm2's app lock, or `pam_tid` for `sudo`)
+protects your session from someone at your desk. It does not gate key usage —
+any process outside that terminal, including pi itself, uses the key without
+ever involving it. Only the agent can refuse to sign.
 
 **The `gh` token does not rotate.** GitHub lists OAuth app tokens (`gho_`) as
 long-lived with manual revocation. Anything that reads it once has indefinite

@@ -66,7 +66,7 @@ Its deployment model matches the host/VM split already in place:
 
 ```
 Host Mac                              Tart VM
-├─ 1Password  (SSH key)                ├─ pi
+├─ SSH agent (1Password / Secretive)                ├─ pi
 ├─ gh         (OAuth token)            │   httpProxy -> host:14322
 └─ Agent Vault :14321 UI/API           └─ no provider token on disk
                :14322 MITM proxy

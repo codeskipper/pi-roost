@@ -1,12 +1,12 @@
-# pi-kit-1pass-tart-macos
+# pi-kit-macOS
 
 Reproducible setup for running the **pi** coding agent inside a **Tart** macOS
-VM, with the **SSH key** held in **1Password** on the host and never written
-into the VM.
+VM, with the SSH key held on the host and never written into the VM.
 
-The name spells out the four fixed assumptions: pi as the agent, 1Password as
-the credential store, Tart as the hypervisor, macOS as both host and guest.
-Swap any of those and the scripts need changes.
+Fixed assumptions: pi as the agent, Tart as the hypervisor, macOS as both host
+and guest. The **credential store is pluggable** — 1Password, Secretive, or a
+plain `ssh-agent` all work; see [Choosing an SSH agent](#choosing-an-ssh-agent)
+for the trade-offs.
 
 The agent runs with full root inside the VM. That is fine — the security comes
 from what is *not* reachable from in there, not from constraining the agent.
@@ -16,20 +16,56 @@ guest, so this kit applies that model where `sbx` does not reach — see
 [docs/COMPARISON.md](docs/COMPARISON.md) for an honest scorecard, including the
 three axes where `sbx` is better.
 
-## Three credentials, only one of them solved by 1Password
+## Choosing an SSH agent
 
-Be precise about this, because the repo name invites the wrong conclusion:
+`host/setup.sh` auto-detects, preferring 1Password, then Secretive, then
+`$SSH_AUTH_SOCK`. Override with `--identity-agent PATH`.
 
-| Credential | Used for | Where it lives | In 1Password? |
+| | 1Password | Secretive | ssh-agent + keychain |
 |---|---|---|---|
-| SSH key | `git clone/push/pull`, `ssh -T git@github.com` | host, inside 1Password | **yes** |
-| `gh` OAuth token | `gh` API calls, **and** full read/write to code over HTTPS | **host only** — `gh auth logout` in the VM | no |
+| Key custody | 1Password process | **Secure Enclave hardware** | file in `~/.ssh` |
+| Exportable | no, by policy | **no, by hardware design** | yes — copy the file |
+| Approval | per key, **per session** | **per signature** | none after unlock |
+| Access notifications | no | **yes** | no |
+| Key types | Ed25519, RSA, ECDSA | **ECDSA P-256 only** | any |
+| Survives hardware loss | yes, vault syncs | **no — keys cannot be exported** | yes, if backed up |
+| Cost | subscription | free (MIT) | free |
+
+**1Password** suits multiple machines and tolerable friction: you approve a key
+once per session. The gap is that an authorised session is a standing
+capability — anything running as you in the VM can sign until you disconnect.
+
+**Secretive** closes that gap. Its FAQ is explicit about forwarding: *"any use
+of one of your SSH keys on the remote host must be authenticated through
+Secretive."* Every `git push` from the VM raises a Touch ID prompt on your Mac,
+so the agent cannot push silently even mid-session. The costs are real: keys
+are `ecdsa-sha2-nistp256` only, they **cannot be backed up or migrated** (*"for
+any new computer, you should just create a new set of keys"*), and per-use
+prompts make unattended operation impossible by design.
+
+**Plain `ssh-agent` + keychain** works and needs nothing extra, but gives no
+per-use consent and leaves an exportable key file on the host. Acceptable if
+the host is your trusted workstation and you want zero dependencies.
+
+> If you choose Secretive, register a **second key** on GitHub (1Password, or a
+> hardware token) as a recovery path. A dead Mac means that key is gone
+> permanently.
+
+## Three credentials, only one of them held on the host
+
+Be precise about this, because "credentials stay on the host" is only true of
+one row:
+
+| Credential | Used for | Where it lives | On the host? |
+|---|---|---|---|
+| SSH key | `git clone/push/pull`, `ssh -T git@github.com` | host, in your chosen agent | **yes** |
+| `gh` OAuth token | `gh` API calls, **and** full read/write to code over HTTPS | **host only** — `gh auth logout` in the VM | yes |
 | Model provider token | pi's calls to the LLM API | VM, plaintext `~/.pi/agent/auth.json` | no |
 
-**1Password solves the first row completely.** The key is never a file, never
-enters the VM, and cannot be copied out of it — only signatures cross the
-boundary. Since day-to-day work is almost entirely git over SSH, that is the
-credential you expose most often and the one now fully protected.
+**The SSH key is solved completely.** It is never a file in the VM, never
+enters it, and cannot be copied out — only signatures cross the boundary. Since
+day-to-day work is almost entirely git over SSH, that is the credential you
+expose most often and the one now fully protected.
 
 The other two still live in the VM, because `gh` and pi need them in-process.
 The kit reduces rather than removes that exposure: it strips the `gh` token to
@@ -47,19 +83,19 @@ those needs an intercepting proxy, which is out of scope — see
 > *persistence beyond revocation*: without `admin:public_key`, a leaked token
 > can no longer plant an SSH key that survives cleanup.
 
-## Why the 1Password agent beats ssh-agent + keychain
+## Why a brokered agent beats a key file
 
-- The private key never exists as a file on any machine, so there is nothing
-  for the VM to read even in principle. With `ssh-agent` the key sits in
-  `~/.ssh/`, encrypted at best, and its passphrase sits in a keychain that is
+- The private key never exists as a file the VM could read. With a key in
+  `~/.ssh/` you are relying on encryption at rest plus a keychain that stays
   unlocked for the whole session.
 - The stock OpenSSH agent lets *any* process use *any* loaded key with no
-  prompt. 1Password requires explicit approval per key, with biometrics.
+  prompt. 1Password requires approval per key; Secretive requires it per
+  signature.
 
-The honest limit: once you approve a key for a session, anything running as
-your user in the VM can make it sign for as long as you stay connected.
-Authorisation is per key, not per request. What you gain is that a captured
-session cannot outlive itself — there is no key material to steal.
+The honest limit for 1Password: once you approve a key for a session, anything
+running as your user in the VM can make it sign until you disconnect.
+Authorisation is per key, not per request. Secretive does not have this
+limitation; plain `ssh-agent` has no gate at all.
 
 ## What the kit changes
 
@@ -103,12 +139,13 @@ credential — only network operations do.
 
 ```bash
 ssh tart-vm-git
-  git push          # 1Password prompts for Touch ID, first use this session
+  git push          # your agent prompts for Touch ID
   exit              # capability ends here
 ```
 
-1Password prompts once per *key per session*, not per push, so a long session
-leaves a standing capability. Push and disconnect if you want it tight.
+With 1Password the prompt appears once per key per session, so a long session
+leaves a standing capability — push and disconnect if you want it tight. With
+Secretive every signature prompts, so there is no standing capability at all.
 
 ### API work runs on the host
 
@@ -166,7 +203,10 @@ egress control, ephemerality and the provider token, where it loses — see
 
 - macOS host with [Tart](https://tart.run) and a macOS guest VM
   (`brew install cirruslabs/cli/tart`)
-- 1Password with the SSH agent enabled (Settings → Developer → Use the SSH agent)
+- An SSH agent on the host — one of:
+  - **1Password** with the SSH agent enabled (Settings → Developer)
+  - **Secretive** (`brew install secretive`), Apple silicon or a T2 Mac
+  - a plain `ssh-agent` with a key loaded
 - `nc` (ships with macOS)
 
 ## Usage
@@ -174,7 +214,7 @@ egress control, ephemerality and the provider token, where it loses — see
 Clone on the **host**:
 
 ```bash
-git clone <this-repo> && cd pi-kit-1pass-tart-macos
+git clone <this-repo> && cd pi-kit-macOS
 ```
 
 ### 0. Create the VM (optional)
@@ -208,9 +248,9 @@ the VM's `authorized_keys`.
 Copy the **whole repo** (the scripts share `lib/`):
 
 ```bash
-rsync -a --exclude .git ./ <vm-alias>:~/pi-kit-1pass-tart-macos/
+rsync -a --exclude .git ./ <vm-alias>:~/pi-kit-macOS/
 ssh <vm-alias>
-cd pi-kit-1pass-tart-macos && ./guest/provision.sh
+cd pi-kit-macOS && ./guest/provision.sh
 ```
 
 `provision.sh` derives the same `<login>-tart-test-vm` name, or takes
