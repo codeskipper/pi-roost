@@ -104,26 +104,31 @@ else
 fi
 
 sec "GitHub CLI"
-if command -v gh >/dev/null 2>&1; then
-  if gh auth status >/dev/null 2>&1; then
-    warn "a gh credential is resident in this VM - prefer 'gh auth logout' and run gh on the host"
-    if [ -f "$HOME/.config/gh/hosts.yml" ] && grep -q oauth_token "$HOME/.config/gh/hosts.yml" 2>/dev/null; then
-      bad "gh token stored in PLAINTEXT in ~/.config/gh/hosts.yml"
-    else
-      ok "gh token not in hosts.yml (keyring)"
-    fi
-    SCOPES="$(gh auth status 2>&1 | sed -n "s/.*Token scopes: //p")"
-    if [ -n "$SCOPES" ]; then
-      case "$SCOPES" in
-        *admin:public_key*) bad "gh token has admin:public_key - it can add SSH keys to your account" ;;
-        *) ok "gh scopes: $SCOPES" ;;
-      esac
-    fi
+if ! command -v gh >/dev/null 2>&1; then
+  ok "gh not installed"
+elif ! security show-keychain-info "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1; then
+  # A locked keychain makes 'gh auth status' fail for the same reason as a
+  # missing credential. Do not read that as absence.
+  warn "login keychain is locked - cannot tell whether a gh credential is resident"
+elif gh auth status >/dev/null 2>&1; then
+  warn "a gh credential is resident in this VM - prefer 'gh auth logout' and run gh on the host"
+  if [ -f "$HOME/.config/gh/hosts.yml" ] && grep -q oauth_token "$HOME/.config/gh/hosts.yml" 2>/dev/null; then
+    bad "gh token stored in PLAINTEXT in ~/.config/gh/hosts.yml"
   else
-    ok "no resident gh credential (git works via the forwarded agent)"
+    ok "gh token not in hosts.yml (keyring)"
+  fi
+  SCOPES="$(gh auth status 2>&1 | sed -n "s/.*Token scopes: //p")"
+  if [ -n "$SCOPES" ]; then
+    case "$SCOPES" in
+      *admin:public_key*) bad "gh token has admin:public_key - it can add SSH keys to your account" ;;
+      *) ok "gh scopes: $SCOPES" ;;
+    esac
   fi
 else
-  ok "gh not installed"
+  ok "no resident gh credential (git works via the forwarded agent)"
+  if security find-generic-password -s "gh:github.com" >/dev/null 2>&1; then
+    bad "but a 'gh:github.com' keychain item still exists - remove it"
+  fi
 fi
 
 sec "Agent runtime credentials"

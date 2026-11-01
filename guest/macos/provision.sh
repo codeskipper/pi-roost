@@ -151,13 +151,24 @@ fi
 
 if [ "$LOGOUT_GH" -eq 1 ]; then
   step "Removing the resident gh credential"
-  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    gh auth logout --hostname github.com 2>/dev/null || true
+  if ! command -v gh >/dev/null 2>&1; then
+    say "gh not installed"
+  elif ! security show-keychain-info "$HOME/Library/Keychains/login.keychain-db" >/dev/null 2>&1; then
+    # gh stores its token in the login keychain. While that is locked, both
+    # 'gh auth status' and 'gh auth logout' fail - and treating that as
+    # 'already logged out' silently leaves the token in place.
+    die "the login keychain is locked, so gh cannot be logged out.
+  Unlock it first:  security unlock-keychain ~/Library/Keychains/login.keychain-db
+  then re-run with --logout-gh."
+  else
+    gh auth logout --hostname github.com >/dev/null 2>&1 || true
+    if gh auth status >/dev/null 2>&1; then
+      die "gh is still authenticated after logout. Check 'gh auth status'."
+    fi
+    security delete-generic-password -s "gh:github.com" >/dev/null 2>&1 || true
     say "logged out - no persistent GitHub credential in this VM"
     say "git over SSH still works while an agent is forwarded"
     say "run gh on the host, e.g. gh pr create -R owner/repo --head BRANCH"
-  else
-    say "gh not installed or already logged out"
   fi
 fi
 
