@@ -47,6 +47,7 @@ ssh my-vm-git      # agent forwarded, GitHub reachable for this session
 | [CREDENTIALS.md](docs/CREDENTIALS.md) | what is protected, where each credential lives, choosing an SSH agent |
 | [WORKFLOW.md](docs/WORKFLOW.md) | daily use, the two aliases, full setup steps |
 | [PR-OPTIONS.md](docs/PR-OPTIONS.md) | whether to let the agent open pull requests, and the risks |
+| [APP-TOKEN.md](docs/APP-TOKEN.md) | design for a gated, short-lived PR token |
 | [SECURITY.md](docs/SECURITY.md) | threat model, residual risks, what is *not* contained |
 | [COMPARISON.md](docs/COMPARISON.md) | honest scorecard against Docker Sandboxes |
 | [BROKERING.md](docs/BROKERING.md) | keeping the model-provider token out of the VM |

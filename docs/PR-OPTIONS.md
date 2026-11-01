@@ -82,6 +82,9 @@ token. The host holds the App private key and mints a token per session:
 **Cost:** creating and installing a GitHub App; re-minting on long sessions.
 **Risk added:** smallest of the token options.
 
+Design and setup: [APP-TOKEN.md](APP-TOKEN.md). Minting is gated on the
+prerequisite below and refuses to issue a token without it.
+
 ## Risks of letting the agent open PRs
 
 **`pull_requests: write` includes merging.** GitHub's own description: *"the
@@ -106,16 +109,23 @@ without review".
 
 ## Prerequisite: branch protection, and whether you have it
 
-Required reviews are the control that makes options 3 and 4 safe. Check before
-relying on it:
+Required reviews are the control that makes options 3 and 4 safe. The kit
+checks this for you:
 
 ```bash
-gh api repos/OWNER/REPO/rulesets
+host/check-pr-prereqs.sh --repo OWNER/NAME
 ```
 
-A `403` with *"Upgrade to GitHub Pro or make this repository public to enable
-this feature"* means **branch protection is not available** on that repository.
-GitHub Free includes it for public repositories but not private ones.
+| Exit | Verdict | Meaning |
+|---|---|---|
+| 0 | PASS | the branch requires an approving review |
+| 1 | UNPROTECTED | no such rule |
+| 2 | UNAVAILABLE | not offered for this repo on its plan |
+| 3 | UNVERIFIABLE | not an admin, not authenticated, unreachable |
+
+It fails closed: anything other than PASS means a token that can merge should
+not be issued. `UNAVAILABLE` reflects that GitHub Free includes protection for
+public repositories but not private ones.
 
 If you get that error, your choices are: make the repository public, upgrade
 the plan, or stay with options 1–2, which need no protection because no token
