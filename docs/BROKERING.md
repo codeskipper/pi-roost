@@ -2,7 +2,7 @@
 
 `docs/COMPARISON.md` lists the model provider token as the one credential this
 kit cannot keep out of the VM, because pi needs it in-process. This page
-surveys ways to fix that, and gives a spike plan to test the most promising one.
+surveys ways to fix that. The test plan lives in BROKERING-SPIKE.md.
 
 **Status: researched, not adopted.** Nothing here is implemented by the kit.
 
