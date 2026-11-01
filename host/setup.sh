@@ -130,20 +130,47 @@ $TARGET
   ForwardAgent yes
 $END"
 
-if grep -qF "$BEGIN" "$SSH_CONFIG"; then
-  # Replace the existing managed block, leave everything else untouched.
-  tmp="$(mktemp)"
-  awk -v b="$BEGIN" -v e="$END" -v repl="$BLOCK" '
-    index($0,b){skip=1; print repl; next}
-    index($0,e){skip=0; next}
-    !skip{print}
-  ' "$SSH_CONFIG" > "$tmp"
-  mv "$tmp" "$SSH_CONFIG"; chmod 600 "$SSH_CONFIG"
-  say "updated existing block"
-else
-  printf '\n%s\n' "$BLOCK" >> "$SSH_CONFIG"
-  say "appended new block"
+# Idempotent: drop any existing managed block, then append a fresh one.
+# The multi-line $BLOCK is never passed through awk -v, which cannot hold
+# newlines - that failed on every second run.
+NBEGIN="$(grep -cF "$BEGIN" "$SSH_CONFIG" || true)"
+NEND="$(grep -cF "$END" "$SSH_CONFIG" || true)"
+
+if [ "$NBEGIN" != "$NEND" ]; then
+  die "$SSH_CONFIG has $NBEGIN start and $NEND end markers for '$ALIAS'.
+  Refusing to edit a half-written block. Remove the lines between
+    $BEGIN
+    $END
+  by hand, then re-run."
 fi
+
+if [ "$NBEGIN" -gt 0 ]; then
+  tmp="$(mktemp)"
+  # One pass: drop the managed block, collapse runs of blank lines to one,
+  # and strip trailing blanks so repeated runs cannot grow the file.
+  awk -v b="$BEGIN" -v e="$END" '
+    index($0,b){skip=1; next}
+    skip && index($0,e){skip=0; next}
+    skip{next}
+    {lines[++n]=$0}
+    END{
+      out=0; prevblank=0
+      for(i=1;i<=n;i++){
+        if(lines[i]==""){ if(prevblank) continue; prevblank=1 } else prevblank=0
+        buf[++out]=lines[i]
+      }
+      while(out>0 && buf[out]=="") out--
+      for(i=1;i<=out;i++) print buf[i]
+    }
+  ' "$SSH_CONFIG" > "$tmp"
+  mv "$tmp" "$SSH_CONFIG"
+  say "replaced existing block for '$ALIAS'"
+else
+  say "adding block for '$ALIAS'"
+fi
+
+printf '\n%s\n' "$BLOCK" >> "$SSH_CONFIG"
+chmod 600 "$SSH_CONFIG"
 
 step "Installing your public key into the VM"
 if [ "$USE_TART_IP" -eq 1 ]; then
