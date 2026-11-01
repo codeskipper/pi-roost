@@ -133,3 +133,34 @@ Several assumptions in this setup turned out to be wrong when tested:
 
 `guest/macos/verify.sh` encodes these as executable checks. Prefer running it over
 reasoning about what the configuration ought to do.
+
+## The trade-off, stated plainly
+
+This design contains the credential in **time**, not in **scope**.
+
+**What it contains.** There is no persistent GitHub credential in the VM. The
+property that made the `gh` token dangerous — one read grants permanent access —
+is gone. The SSH key can never be copied out, and its usability ends when you
+disconnect.
+
+**What it does not contain.** During an open `-git` session, the VM can push to
+any repository your key reaches. Bounded *capability* is not bounded *damage*:
+commits pushed during that window persist afterwards. For a coding agent that
+is the realistic risk — not a dramatic token theft, but a bad commit landing on
+`main` while a window was open.
+
+**Closing the scope axis** (recommended, not automated by this kit):
+
+- **Per-repo deploy keys.** Keep a deploy key per project in your agent instead
+  of your account key. Then even mid-session the VM reaches exactly one
+  repository. Strongest remaining improvement.
+- **Branch protection / required review.** Makes "agent pushes to `main`"
+  structurally impossible. Pairs naturally with this flow: the agent pushes a
+  branch, you open the PR from the host.
+- **Fine-grained PAT** for the host-side `gh`, scoped to specific repos with an
+  expiry date, replacing the long-lived `gho_` token.
+
+Time containment plus scope containment is where to stop. Either alone leaves
+an obvious gap. For how this compares with Docker Sandboxes — including
+egress control, ephemerality and the provider token, where it loses — see
+[docs/COMPARISON.md](COMPARISON.md).
