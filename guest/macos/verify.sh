@@ -138,10 +138,18 @@ fi
 
 if [ "$NETWORK" -eq 1 ]; then
   sec "Connectivity"
-  if ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
-    ok "GitHub SSH authentication works"
+  ssh-add -l >/dev/null 2>&1; agent_rc=$?
+  if [ "$agent_rc" -eq 2 ]; then
+    warn "no agent in this session - connect with the -git alias before testing GitHub"
+  elif [ "$agent_rc" -eq 1 ]; then
+    warn "agent reachable but holds no keys - is your password manager unlocked?"
   else
-    warn "GitHub SSH authentication failed (agent not forwarded, or key not registered)"
+    OUT="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1)"
+    case "$OUT" in
+      *successfully\ authenticated*) ok "GitHub SSH authentication works" ;;
+      *Permission\ denied*) bad "agent has a key but GitHub rejected it - register the public key at https://github.com/settings/keys" ;;
+      *) warn "could not reach GitHub: $(printf '%s' "$OUT" | head -1)" ;;
+    esac
   fi
 fi
 
