@@ -178,28 +178,45 @@ if [ "$USE_TART_IP" -eq 1 ]; then
 else
   ADDR="$VM_HOST"
 fi
-say "target: $VM_USER@$ADDR"
+say "target: $ALIAS ($VM_USER@$ADDR)"
 say "you will be prompted for the VM password (this is the last time)"
 
-SSH_AUTH_SOCK="$OP_SOCK" ssh-add -L | \
-  ssh "$VM_USER@$ADDR" \
+# Connect via the alias so the known_hosts entry is written under HostKeyAlias.
+# Using the raw address records it under a different name, and the BatchMode
+# check below then fails on an unknown host key.
+ssh-add -L | \
+  ssh -o StrictHostKeyChecking=accept-new "$ALIAS" \
     'mkdir -p ~/.ssh && chmod 700 ~/.ssh &&
      touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys &&
      while read -r k; do grep -qxF "$k" ~/.ssh/authorized_keys || echo "$k" >> ~/.ssh/authorized_keys; done &&
      echo "  authorized_keys now has $(wc -l < ~/.ssh/authorized_keys | tr -d " ") key(s)"'
 
 step "Verifying agent forwarding"
-if ssh -o BatchMode=yes "${ALIAS}-git" 'ssh-add -l' 2>/dev/null | sed 's/^/  /'; then
-  say "forwarding works via ${ALIAS}-git"
-else
-  die "could not list forwarded keys via '${ALIAS}-git'. Try: ssh -v ${ALIAS}-git"
-fi
+set +e
+FWD_OUT="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new "${ALIAS}-git" 'ssh-add -l' 2>&1)"
+FWD_RC=$?
+set -e
+case "$FWD_RC" in
+  0) printf '%s\n' "$FWD_OUT" | sed 's/^/  /'; say "forwarding works via ${ALIAS}-git" ;;
+  1) die "the agent was forwarded but holds no identities.
+  Is $AGENT_NAME unlocked, and does it hold an SSH key?" ;;
+  2) die "no agent reached the VM. Check that 'ForwardAgent yes' is present for
+  ${ALIAS}-git in $SSH_CONFIG, then try: ssh -v ${ALIAS}-git" ;;
+  255) die "could not connect to '${ALIAS}-git':
+$(printf '%s' "$FWD_OUT" | sed 's/^/  /')" ;;
+  *) die "unexpected failure (rc=$FWD_RC):
+$(printf '%s' "$FWD_OUT" | sed 's/^/  /')" ;;
+esac
 
 step "Verifying the default alias forwards nothing"
-if ssh -o BatchMode=yes "$ALIAS" 'ssh-add -l' >/dev/null 2>&1; then
-  say "WARNING: '$ALIAS' reached an agent - expected none"
-else
+set +e
+ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$ALIAS" 'ssh-add -l' >/dev/null 2>&1
+PLAIN_RC=$?
+set -e
+if [ "$PLAIN_RC" -eq 2 ] || [ "$PLAIN_RC" -eq 255 ]; then
   say "'$ALIAS' has no agent, as intended"
+else
+  say "WARNING: '$ALIAS' reached an agent (rc=$PLAIN_RC) - expected none"
 fi
 
 cat <<EOF
