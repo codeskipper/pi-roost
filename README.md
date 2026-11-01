@@ -65,6 +65,9 @@ whole posture. Run it any time; it encodes the checks rather than the prose.
   [BROKERING.md](docs/BROKERING.md) surveys fixes; none are implemented.
 - **Agent forwarding is session-scoped, not per-command** — unless you use
   Secretive, which approves each signature.
+- **A `gh` token is optional.** Git over SSH needs none; it is only for API
+  work, which the browser also covers. See
+  [CREDENTIALS.md](docs/CREDENTIALS.md).
 - **Do not `tart push` a provisioned VM.** Re-run `provision.sh` in any clone,
   or it inherits this VM's host keys.
 

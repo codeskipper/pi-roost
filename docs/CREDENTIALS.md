@@ -43,25 +43,47 @@ the host is your trusted workstation and you want zero dependencies.
 Be precise about this, because "credentials stay on the host" is only true of
 one row:
 
-| Credential | Used for | Where it lives | On the host? |
+| Credential | Used for | Where it lives | Required? |
 |---|---|---|---|
 | SSH key | `git clone/push/pull`, `ssh -T git@github.com` | host, in your chosen agent | **yes** |
-| `gh` OAuth token | `gh` API calls, **and** full read/write to code over HTTPS | **host only** — `gh auth logout` in the VM | yes |
-| Model provider token | pi's calls to the LLM API | VM, plaintext `~/.pi/agent/auth.json` | no |
+| `gh` OAuth token | GitHub **API** calls — PRs, issues, releases | host only, or nowhere | **optional** |
+| Model provider token | pi's calls to the LLM API | VM, plaintext `~/.pi/agent/auth.json` | yes, for pi |
 
 **The SSH key is solved completely.** It is never a file in the VM, never
 enters it, and cannot be copied out — only signatures cross the boundary. Since
 day-to-day work is almost entirely git over SSH, that is the credential you
 expose most often and the one now fully protected.
 
-The other two still live in the VM, because `gh` and pi need them in-process.
-The kit reduces rather than removes that exposure: it strips the `gh` token to
-the minimum scopes GitHub allows, keeps it out of plaintext `hosts.yml`, and
-documents the provider token as an accepted residual risk. Properly fixing
-those needs an intercepting proxy, which is out of scope — see
-[docs/SECURITY.md](SECURITY.md).
+Only the provider token still lives in the VM, because pi needs it in-process;
+[BROKERING.md](BROKERING.md) surveys fixes and none are implemented. The `gh`
+token is removed from the VM by `provision.sh --logout-gh`, and kept on the
+host only if you want it at all.
 
-> **Do not under-read the `gh` token.** Even at the minimum scopes, `repo`
+## The `gh` token is optional
+
+Nothing in the git workflow needs it. `clone`, `push`, `pull` and `fetch` all
+run over SSH through the forwarded agent, with no token involved. `gh` is only
+needed for **API** work: opening PRs, filing issues, cutting releases — all of
+which are also available in the browser, where your existing session is the
+credential.
+
+So a git-plus-browser workflow needs no `gh` token anywhere: not in the VM, not
+on the host.
+
+| | Keep `gh` on the host | Go `gh`-free |
+|---|---|---|
+| Permanent credential on your Mac | one | **none** |
+| Scripted PRs, releases, issue triage | yes | browser only |
+| `gh repo create` | yes | web UI |
+| CI/CD pipelines | unaffected — Actions mints its own ephemeral `GITHUB_TOKEN` | unaffected |
+
+Going `gh`-free removes a credential that never expires and grants read/write
+to every repository your account can reach. If you rarely script GitHub
+operations, it costs little. See [PR-OPTIONS.md](PR-OPTIONS.md) for how PR
+creation works in each case.
+
+> **If you do keep a `gh` token, do not under-read it.** Even at the minimum
+> scopes, `repo`
 > grants *"read/write access to code, commit statuses, invitations,
 > collaborators, adding team memberships, and deployment statuses"* across every
 > repository your account can reach, and a token works as a git password over
