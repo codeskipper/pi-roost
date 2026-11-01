@@ -112,20 +112,22 @@ else
 fi
 
 BLOCK="$BEGIN
-# Two capability levels for the same VM. The default alias forwards nothing;
-# use the -git alias only when the VM needs to reach GitHub.
+# Two capability levels for the same VM.
+#   IdentityAgent  - which agent THIS machine uses to authenticate (both).
+#   ForwardAgent   - whether the VM may use that agent (-git only).
 Host $ALIAS
 $TARGET
   User $VM_USER
   HostKeyAlias $ALIAS
+  IdentityAgent \"$IDENTITY_AGENT\"
   ForwardAgent no
 
 Host ${ALIAS}-git
 $TARGET
   User $VM_USER
   HostKeyAlias $ALIAS
-  ForwardAgent yes
   IdentityAgent \"$IDENTITY_AGENT\"
+  ForwardAgent yes
 $END"
 
 if grep -qF "$BEGIN" "$SSH_CONFIG"; then
