@@ -23,6 +23,14 @@ having the same validation: Secretive and plain `ssh-agent` have not been
 validated in this test, and model-provider credential brokering remains
 unimplemented. See the limitations below before relying on the setup.
 
+**Next priority: limit the scope of the agent's GitHub access.** Forwarding a
+personal SSH key currently makes every repository that key can access reachable
+during the session. The next step is to restrict access to the repositories
+and permissions each project actually needs, starting with investigating
+per-repository deploy keys and isolated agent forwarding. This is not yet
+implemented; see [GitHub access scoping](docs/GITHUB-ACCESS-SCOPE.md) for options
+and a verification checklist.
+
 ## Requirements
 
 - macOS host with [Tart](https://tart.run) — `brew install cirruslabs/cli/tart`
