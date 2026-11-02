@@ -12,6 +12,17 @@ serve.
 macOS host is a fixed assumption. The credential store (1Password, Secretive,
 or a plain `ssh-agent`) and the guest OS (macOS today, Linux planned) are not.
 
+## Project status
+
+pi-roost is a **practical research project**. The host-held SSH credential
+workflow is functional and has been tested successfully with **1Password**,
+including migration of an existing macOS VM to a forwarded host agent.
+
+Other supported agent options and research proposals should not be read as
+having the same validation: Secretive and plain `ssh-agent` have not been
+validated in this test, and model-provider credential brokering remains
+unimplemented. See the limitations below before relying on the setup.
+
 ## Requirements
 
 - macOS host with [Tart](https://tart.run) — `brew install cirruslabs/cli/tart`
@@ -47,6 +58,7 @@ ssh my-vm-git      # agent forwarded, GitHub reachable for this session
 | [CREDENTIALS.md](docs/CREDENTIALS.md) | what is protected, where each credential lives, choosing an SSH agent |
 | [WORKFLOW.md](docs/WORKFLOW.md) | daily use, the two aliases, full setup steps |
 | [MIGRATION.md](docs/MIGRATION.md) | moving an existing VM to host-held credentials |
+| [GITHUB-ACCESS-SCOPE.md](docs/GITHUB-ACCESS-SCOPE.md) | options for restricting the agent to specific repositories and permissions |
 | [PR-OPTIONS.md](docs/PR-OPTIONS.md) | whether to let the agent open pull requests, and the risks |
 | [APP-TOKEN.md](docs/APP-TOKEN.md) | design for a gated, short-lived PR token |
 | [SECURITY.md](docs/SECURITY.md) | threat model, residual risks, what is *not* contained |
