@@ -26,3 +26,9 @@ All three are **host-side**, so building them for the macOS guest makes Linux
 guest support cheap later. What separates this from `sbx` is not capability but
 integration: `sbx` ships these assembled and maintained, while here you would
 own the result.
+
+A possible second layer, also untested: run pi under
+[cplt](https://github.com/navikt/cplt) inside the VM for egress filtering,
+`git`/`gh` command guards, and placeholder injection of the Copilot token. It
+is guest-side, so it does not replace the host-side paths above. See
+[BROKERING.md](BROKERING.md#cplt-placeholder-injection-for-github-and-copilot-tokens).

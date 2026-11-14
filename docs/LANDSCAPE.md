@@ -105,14 +105,17 @@ How it compares:
   policy, and it runs on Windows. Policy is not stored in the repo, and it
   confines the process without stopping authorised `git`/`gh` calls. cplt's
   README says it guards those commands instead.
-- **VMs (pi-roost, Docker Sandboxes):** no VM boundary, so lighter to run. It
-  does not keep credentials out of reach the way pi-roost does, and it doesn't
-  replace Docker's full isolation.
+- **VMs (pi-roost, Docker Sandboxes):** no VM boundary, so lighter to run, and
+  it doesn't replace Docker's full isolation. Credentials stay on the same
+  machine as the agent, behind path denies and env filtering, where pi-roost
+  keeps them on the host. The exception is GitHub and Copilot tokens, which
+  cplt can replace with a placeholder that its proxy swaps on the way out. See
+  [BROKERING.md](BROKERING.md#cplt-placeholder-injection-for-github-and-copilot-tokens).
 
 Its README lists its own gaps: weaker file-level enforcement on Linux, no
 read-only or workspace-write presets yet, and an all-or-nothing Keychain grant
-on macOS. This section is based on the README alone; cplt has not been installed
-or tested here.
+on macOS. This section is based on the README and docs alone; cplt has not been
+installed or tested here.
 
 For pi-roost, cplt supports Pi and could run inside the VM as a second layer.
 It would also address the missing egress policy noted in

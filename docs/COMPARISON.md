@@ -110,7 +110,7 @@ is not a sandbox; it shows what a Copilot extension in VS Code or PyCharm can
 reach by default, for comparison.
 
 Sources: `sbx` and pi-roost columns as above and in the sections of this
-file. cplt column from its README (`navikt/cplt`), not tested here. IDE column
+file. cplt column from its README and docs (`navikt/cplt`), not tested here. IDE column
 from [LANDSCAPE.md](LANDSCAPE.md#ide-extensions-copilot-in-vs-code-and-pycharm).
 
 | Axis | Docker Sandboxes (`sbx`) | pi-roost | cplt | IDE extension (VS Code / PyCharm) |
@@ -118,7 +118,7 @@ from [LANDSCAPE.md](LANDSCAPE.md#ide-extensions-copilot-in-vs-code-and-pycharm).
 | Isolation boundary | microVM, own kernel | Tart VM, own kernel | per-process: Seatbelt (macOS), Landlock + seccomp (Linux); shared kernel | none; runs in the IDE process as the user |
 | Agent privilege | full root inside | full root inside | runs as the user; restrictions apply to it and every child | user's full privileges |
 | Credentials in reach | sentinel values; real keys stay on host | host-held; forwarded only during `-git` session | `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg`, etc. denied; env filtered; macOS Keychain grant is all-or-nothing | everything the user can read |
-| Model provider token | proxy-injected, not in sandbox | plaintext inside VM, always readable | not covered in cplt's README | readable by the extension, in the user's profile |
+| Model provider token | proxy-injected, not in sandbox | plaintext inside VM, always readable | GitHub and Copilot tokens placeholder-injected at the proxy when `proxy.inject_github_token` is on; token files such as pi's `auth.json` and non-GitHub provider keys are not masked — see [BROKERING.md](BROKERING.md#cplt-placeholder-injection-for-github-and-copilot-tokens) | readable by the extension, in the user's profile |
 | Network egress | all TCP through policy proxy | none | outbound 443 only; domain allow/block via proxy; audit log | unrestricted beyond the extension's own traffic |
 | GitHub actions | proxy-injected credentials | SSH agent forwarded per session | `git push` to default branch and `gh` merge/delete/release blocked | tool approvals only, if enabled |
 | File scope | per-mount | whole VM | project directory writable; `.env*`, keys, `.git/hooks` protected | whole user account |
