@@ -71,6 +71,7 @@ ssh my-vm-git      # agent forwarded, GitHub reachable for this session
 | [APP-TOKEN.md](docs/APP-TOKEN.md) | design for a gated, short-lived PR token |
 | [SECURITY.md](docs/SECURITY.md) | threat model, residual risks, what is *not* contained |
 | [COMPARISON.md](docs/COMPARISON.md) | honest scorecard against Docker Sandboxes |
+| [LANDSCAPE.md](docs/LANDSCAPE.md) | how Mac/iOS developers and coding agents usually sandbox, and IDE extension risks |
 | [BROKERING.md](docs/BROKERING.md) | keeping the model-provider token out of the VM |
 | [BROKERING-SPIKE.md](docs/BROKERING-SPIKE.md) | the test plan for that, when you want to try it |
 | [ROADMAP.md](docs/ROADMAP.md) | Linux guests, and the three unimplemented gaps |
