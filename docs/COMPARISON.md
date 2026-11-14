@@ -102,6 +102,39 @@ Ranked by feasibility, none currently implemented or tested. All three are
    guest. See [BROKERING.md](BROKERING.md) for the survey and a spike plan.
    Not yet tested.
 
+## Across all four
+
+This table adds cplt and the IDE extension baseline to the `sbx` comparison.
+It covers the Mac and developer-laptop options in one place. The IDE column
+is not a sandbox; it shows what a Copilot extension in VS Code or PyCharm can
+reach by default, for comparison.
+
+Sources: `sbx` and pi-roost columns as above and in the sections of this
+file. cplt column from its README and docs (`navikt/cplt`), not tested here. IDE column
+from [LANDSCAPE.md](LANDSCAPE.md#ide-extensions-copilot-in-vs-code-and-pycharm).
+
+| Axis | Docker Sandboxes (`sbx`) | pi-roost | cplt | IDE extension (VS Code / PyCharm) |
+|---|---|---|---|---|
+| Isolation boundary | microVM, own kernel | Tart VM, own kernel | per-process: Seatbelt (macOS), Landlock + seccomp (Linux); shared kernel | none; runs in the IDE process as the user |
+| Agent privilege | full root inside | full root inside | runs as the user; restrictions apply to it and every child | user's full privileges |
+| Credentials in reach | sentinel values; real keys stay on host | host-held; forwarded only during `-git` session | `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg`, etc. denied; env filtered; macOS Keychain grant is all-or-nothing | everything the user can read |
+| Model provider token | proxy-injected, not in sandbox | plaintext inside VM, always readable | GitHub and Copilot tokens placeholder-injected at the proxy when `proxy.inject_github_token` is on; token files such as pi's `auth.json` and non-GitHub provider keys are not masked — see [BROKERING.md](BROKERING.md#cplt-placeholder-injection-for-github-and-copilot-tokens) | readable by the extension, in the user's profile |
+| Network egress | all TCP through policy proxy | none | outbound 443 only; domain allow/block via proxy; audit log | unrestricted beyond the extension's own traffic |
+| GitHub actions | proxy-injected credentials | SSH agent forwarded per session | `git push` to default branch and `gh` merge/delete/release blocked | tool approvals only, if enabled |
+| File scope | per-mount | whole VM | project directory writable; `.env*`, keys, `.git/hooks` protected | whole user account |
+| Policy location | sandbox configuration | scripts and docs in repo | `.cplt.toml` in repo, trust-approved | workspace trust settings, org content exclusions |
+| Ephemerality | disposable per task | long-lived | long-lived (host) | long-lived |
+| Platform | Linux guests on Apple silicon | macOS host; macOS guest today | macOS, Linux; Windows via WSL2 | VS Code or PyCharm on any OS |
+| Setup | one command | scripts to maintain | `brew install`, `cplt doctor` | install extension |
+| Runtime observability | logs connections and secrets touched | static audit (`verify.sh`) | outbound audit log | extension logs only |
+
+Reading across the table: `sbx` and pi-roost are the strongest on credential
+isolation, with pi-roost having an edge on keeping the GitHub token entirely
+off the VM. cplt gives the most useful per-action guards and sensible file
+scoping on a laptop, but its boundary is weaker than a VM. The IDE extension
+is the weakest case: it has the same reach as the user, and its protection is
+mostly workspace trust and approval settings.
+
 ## Sources
 
 - Docker Sandboxes, credential management and isolation layers:

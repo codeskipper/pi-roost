@@ -55,6 +55,7 @@ that holds the real key:
 | paude-proxy, clavitor, comis | injecting proxies | small/young projects |
 | [dtkav/agent-creds](https://github.com/dtkav/agent-creds) | Envoy + Vault, macaroon tokens | ships `agents/pi.toml`, but **Linux-only sandbox** |
 | CyberArk Secretless Broker | the enterprise original | heavyweight |
+| [navikt/cplt](https://github.com/navikt/cplt) | per-process sandbox with a built-in injecting proxy | **GitHub and Copilot tokens only**; lists Pi as supported; untested here — see [below](#cplt-placeholder-injection-for-github-and-copilot-tokens) |
 
 ### Why standalone Agent Vault is out
 
@@ -73,6 +74,53 @@ licensing against your own requirements before depending on it.**
 
 Lesson recorded: check a project's deprecation and maintenance signals, not
 just its README.
+
+### cplt: placeholder injection for GitHub and Copilot tokens
+
+cplt is a sandbox, not a broker, but its `proxy.inject_github_token` setting
+is an injecting proxy for one class of credential. This is from cplt's
+`docs/configuration.md`, `docs/known-impacts.md` and `docs/proxy.md`. Nothing
+here has been run.
+
+What its docs describe:
+
+- The agent gets a placeholder with the same prefix and length as the real
+  token, in `GH_TOKEN`, `GITHUB_TOKEN`, `COPILOT_GITHUB_TOKEN` and the gh
+  guard's token files.
+- For `api.github.com`, `github.com`, `uploads.github.com` and
+  `*.githubcopilot.com`, the proxy terminates TLS with a per-session CA and
+  swaps the placeholder for the real token. Other hosts get the placeholder.
+- If a prerequisite fails, cplt refuses to launch instead of handing over the
+  real token.
+- For Pi, the Keychain is denied, and the three GitHub token variables are
+  stripped from the environment unless passed with `--pass-env`.
+
+What that means for pi:
+
+- pi accepts `COPILOT_GITHUB_TOKEN` for the `github-copilot` provider (pi's
+  `docs/providers.md`), which is the path the placeholder covers.
+- pi's `/login` path is not covered. It stores an OAuth refresh token in
+  `~/.pi/agent/auth.json`, and cplt's docs do not list that file among the
+  things it masks. To benefit, the OAuth entry has to be removed and the token
+  supplied through the environment only.
+- Only tokens with a GitHub prefix (`gh?_`, `github_pat_`) are masked. Keys for
+  other providers passed with `--pass-env` reach the agent unmasked.
+- cplt has no built-in endpoint list for Pi, so under a domain allowlist the
+  provider's hosts must be added by hand.
+
+Limits:
+
+- It controls leaks, not use. The agent can still make authenticated calls to
+  those GitHub hosts through the proxy.
+- `~/.config/gh/hosts.yml` stays readable, so a token stored there is exposed.
+- cplt and its proxy run on the same machine as the agent. Inside the VM, the
+  real token would still be in the VM, outside the sandbox. The protection is
+  then the Seatbelt profile, not the VM boundary. A host-side gateway keeps the
+  token off the VM altogether.
+
+Not yet checked: whether pi works end to end with a placeholder, and whether
+GitHub returns a short-lived Copilot session token that would then be real and
+readable inside the sandbox.
 
 ## Why a gateway now looks like the better fit
 
