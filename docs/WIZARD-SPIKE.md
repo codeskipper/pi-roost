@@ -162,8 +162,13 @@ the alias no longer matches. `ssh-keygen -R` removes the old one.
 `verify.sh --network`. Skip both for the spike. The login key should only open
 the VM, and the network check would test GitHub access with it.
 
-**Ready when:** `ssh VM` opens a session without a password, and in it
-`ssh-add -l` reports that no agent is reachable.
+`verify.sh` reports one FAIL on a fresh VM: the account password is still the
+base image's default, `admin`. It does not affect the spike, and for a
+throwaway test VM it can be left. [WORKFLOW.md](WORKFLOW.md#3-verify) says how
+to change it.
+
+**Ready when:** `verify.sh` shows no other FAIL, `ssh VM` opens a session
+without a password, and in it `ssh-add -l` reports that no agent is reachable.
 
 After the spike, `ssh-add -d ~/.ssh/pi-roost-spike-login` removes the login
 key from the agent.
