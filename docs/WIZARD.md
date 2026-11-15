@@ -7,9 +7,10 @@ provisioning and launching the pi VM, and lets them pick.
 **Status: design, nothing built.** The plan is worked out one feature at a
 time. Step 1 is designed below. Later steps are listed but not designed.
 
-The claims about Secretive come from its README, FAQ and issue tracker. The
-OpenSSH options were checked against the man pages. Nothing has been run. The
-[spikes](#spikes-before-building) list what has to be confirmed first.
+The claims about Secretive come from its README, FAQ, issue tracker and
+source. The OpenSSH options were checked against the man pages. Nothing has
+been run. The [spikes](#spikes-before-building) list what has to be confirmed
+first, and [WIZARD-SPIKE.md](WIZARD-SPIKE.md) is the plan for running them.
 
 ## Steps
 
@@ -91,12 +92,17 @@ restrict the socket.
 
 ### The balance: notify for routine, Touch ID for significant
 
-Secretive has two protection levels, fixed when a key is created:
+Secretive has protection levels, fixed when a key is created. The plan uses
+two of them:
 
 - **Notify:** signs without authentication and shows a notification.
 - **Require Authentication:** each signature needs Touch ID, an Apple Watch or
   the password. After authenticating, the notification offers to leave the key
   unlocked for a set time.
+
+A third level, **Current Biometrics**, accepts Touch ID only, with no password
+fallback. The key becomes unusable if the enrolled fingerprints change. It is
+not used in this plan.
 
 The plan uses both, so that prompts are rare and mean something:
 
@@ -142,6 +148,15 @@ Keeping prompts down:
   prompt for repository A.
 - **A write key can push to any unprotected branch.**
 - **Read access is not an exfiltration limit.** The VM has no egress policy.
+- **Secretive must hold deploy keys only.** The route depends on the login
+  agent and the forwarded agent being different. If a user keeps a personal
+  GitHub key in Secretive, or uses Secretive to log in to the VM, that key is
+  on the forwarded socket and in reach of the VM, gated only by its own
+  protection level. The wizard has to detect this and warn or refuse.
+- **`setup.sh` prefers Secretive as the login agent** when 1Password is absent.
+  On such a host, installing Secretive for deploy keys and re-running
+  `setup.sh` would make it the login agent too. The wizard has to set the
+  login agent explicitly.
 
 If these are not acceptable, the stricter design is in
 [Alternatives](#alternatives).
@@ -150,7 +165,8 @@ If these are not acceptable, the stricter design is in
 
 1. **Check prerequisites.** The launcher has already checked the Command Line
    Tools, Homebrew and Node. Here: Secretive installed and its agent running,
-   `gh` signed in on the host, the VM reachable.
+   `gh` signed in on the host, the VM reachable. Also: the login agent is not
+   Secretive, and Secretive holds no keys other than pi-roost's deploy keys.
 2. **Pick repositories.** A searchable list from `gh`. Each repository cycles
    through none, read and write. Public repositories offer none and write only.
    A repository can be marked sensitive. Repositories without admin rights are
@@ -159,7 +175,9 @@ If these are not acceptable, the stricter design is in
    the default branch and warn if it is missing.
 4. **Create keys.** One or two keys per repository in Secretive, named so the
    repository and access level are readable in a prompt, for example
-   `pi-roost owner/repo write`.
+   `pi-roost owner/repo write`. The source shows no way to create a key
+   outside the app, so the wizard tells the user what to create, waits, and
+   picks up the new public key file.
 5. **Register keys.** Add each public key to its repository with
    `gh repo deploy-key add`, with write allowed only on write keys.
 6. **Write guest routing.** Public keys, one host alias per key, and the fetch
@@ -178,6 +196,10 @@ Secretive. Deploy keys do not expire.
 - [ ] Decide the default gate for private reads, notification only or Touch
   ID, after initial testing. See
   [the balance](#the-balance-notify-for-routine-touch-id-for-significant).
+  The finding for spike 7 bears on this: a Notify key raises a time-sensitive
+  notification on every fetch.
+- [ ] Run [WIZARD-SPIKE.md](WIZARD-SPIKE.md) on the host and record the
+  results.
 
 ### Spikes before building
 
@@ -195,6 +217,28 @@ Each of these can change the design. They are in order of impact.
 | 8 | Does GitHub accept the Secure Enclave's 256-bit EC keys as deploy keys? | the route does not work |
 | 9 | Do fetch and push use the intended key with the URL rewrites, with no extra signatures? | spurious prompts |
 
+#### Findings from Secretive's source
+
+Read from the main branch on 18 October 2026. The latest release is v4.0.0,
+from September 2026; which release contains each behaviour was not checked.
+These are readings of code, to be confirmed on the host.
+
+| # | Finding |
+|---|---|
+| 2 | Yes. The Touch ID prompt reads *sign a request from "app" using secret "name"*. The notification is titled *Signed Request from app* with *Using secret name*. |
+| 3 | No way found. There is no command-line tool, URL scheme or automation hook. |
+| 4 | Not settled. The level is recorded with the key, and may read as unknown. Public key files are named by fingerprint, not by secret name. |
+| 5 | Per key. Unlocks are stored per secret, for 5 minutes, 1 hour or 24 hours. |
+| 6 | The app at the top of the requesting process chain on the host, such as the terminal app. A process in the VM cannot be identified. |
+| 7 | No. Every signature raises a notification at the time-sensitive level, for every protection level. Turning Secretive's notifications off would also hide the "Leave Unlocked" offer, which is in the notification. |
+
+Also found: the prompt and notification can name the destination, as in *to
+connect to "target"*. Whether that works for a forwarded request is part of
+the spike plan. Secretive now offers more than one key type, so the wizard
+has to ask for the 256-bit ECDSA type.
+
+Spikes 1, 8 and 9 can only be answered on the host.
+
 ### Alternatives
 
 - **Per-session agent.** The wizard starts an empty `ssh-agent` for each
@@ -209,6 +253,9 @@ Each of these can change the design. They are in order of impact.
 
 ## Sources
 
+- Secretive's source, main branch at commit `164aacc` (18 October 2026):
+  `AuthenticationHandler.swift`, `Notifier.swift`, `CreationOptions.swift`,
+  `SigningRequestProvenance.swift`, `URLs.swift` and the localised strings.
 - Secretive [README](https://github.com/maxgoedjen/secretive) and
   [FAQ](https://github.com/maxgoedjen/secretive/blob/main/FAQ.md): Secure
   Enclave storage, Touch ID, notifications, agent forwarding, public key files,
