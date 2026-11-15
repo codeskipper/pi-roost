@@ -1,0 +1,377 @@
+# Wizard design plan
+
+A plan for a host-side provisioning and launch wizard with the look and feel
+of the pi coding agent. It guides the user to the best-fit options for
+provisioning and launching the pi VM, and lets them pick.
+
+**Status: design, nothing built.** The plan is worked out one feature at a
+time. Step 1 is designed below, and its route was confirmed by a spike on a
+test Mac on 15 November 2026. Later steps are listed but not designed.
+
+The claims about Secretive come from its README, FAQ, issue tracker and
+source, and from that spike. The OpenSSH options were checked against the man
+pages. The [spikes](#spikes-before-building) list the questions, and
+[WIZARD-SPIKE.md](WIZARD-SPIKE.md) has the test plan and its results.
+
+## Steps
+
+| Step | Feature | State |
+|---|---|---|
+| 1 | Limit GitHub access to chosen repositories with per-repository deploy keys | designed below |
+| later | VM creation and provisioning, model-token gateway, egress policy, per-task VMs | not designed |
+
+## Runtime and launcher
+
+The wizard uses pi's own TUI library, `@earendil-works/pi-tui`, so the look is
+pi's and not an imitation. The library is an MIT-licensed Node package. Version
+1.5.2 needs Node 22.19 or later and has three direct dependencies, pinned to
+exact versions. The kit is bash-only today, so Node is new on the host.
+
+Node is optional. The wizard is a front end over the `host/*.sh` scripts, and
+an operator who does not want Node runs those scripts directly.
+
+The wizard needs Node to start, so a small bash launcher runs first, with
+plain-text prompts. The pi look begins once the wizard itself is running.
+
+### Assumed on the host
+
+The Xcode Command Line Tools and Homebrew are assumed to be installed. The
+launcher checks for both. If one is missing it says so, suggests how to
+install it, and stops. It does not install either itself.
+
+| Missing | Suggestion |
+|---|---|
+| Command Line Tools | `xcode-select --install` |
+| Homebrew | the `Homebrew.pkg` installer from <https://github.com/Homebrew/brew/releases/latest> |
+
+Homebrew may be managed, for example by Workbrew. There `brew` runs as a
+service account, tap trust is shared by the whole Mac, and only administrators
+can change it. A standard user may be unable to trust the tap that Tart comes
+from, or to install Node system-wide. The launcher has to detect a managed
+Homebrew and say what an administrator needs to do, not fail on a permission
+error. Found while preparing a test Mac; the detection is not designed yet.
+
+### Finding or installing Node
+
+1. **Look for Node.** On the `PATH`, or installed globally. It counts as found
+   only if it is 22.19 or later. An older Node is treated as not found and is
+   left untouched.
+2. **If found, use it.**
+3. **If not found, ask the operator** to choose:
+   - **System-wide:** `brew install node`.
+   - **Private:** a pinned Node in a folder pi-roost owns, not on the `PATH`.
+     The download is verified against its published checksum. Deleting the
+     folder removes it.
+   - **Neither:** stop, and point to the `host/*.sh` scripts.
+4. **Remember the answer,** so the launcher does not ask on every run.
+
+In every case the wizard's npm packages go in pi-roost's own folder, installed
+from a lockfile with install scripts disabled. Nothing is installed with
+`npm install -g`. The operator's choice is only about where the runtime lives.
+The wizard needs no network access for its packages once they are installed.
+
+The cost of using an existing Node: the wizard runs on whatever version each
+host has, above the minimum.
+
+## Step 1: GitHub access per repository
+
+The priority from the README: forwarding a personal SSH key makes every
+repository that key can reach available during a session. This step replaces
+it with one deploy key per repository, held on the host. Background and the
+other options are in [GITHUB-ACCESS-SCOPE.md](GITHUB-ACCESS-SCOPE.md).
+
+### Decision: Secretive first
+
+Deploy keys live in [Secretive](https://github.com/maxgoedjen/secretive), in
+the Secure Enclave. The session forwards Secretive's socket. 1Password stays as
+the agent for logging in to the VM, so the personal key is never on the
+forwarded socket.
+
+Why this route first:
+
+- Keys cannot be exported, even by the host.
+- Touch ID can gate individual signatures.
+- No new infrastructure: `ForwardAgent` accepts an explicit socket path.
+
+What it does not do: Secretive's socket offers every key it holds. A session
+can list all deploy keys and ask for a signature from any of them. The
+repositories chosen for a session set up routing in the guest; they do not
+restrict the socket.
+
+### The balance: notify for routine, Touch ID for significant
+
+Secretive has protection levels, fixed when a key is created. The plan uses
+two of them:
+
+- **Notify:** signs without authentication and shows a notification.
+- **Require Authentication:** each signature needs Touch ID, an Apple Watch or
+  the password. After authenticating, the notification offers to leave the key
+  unlocked for a set time.
+
+A third level, **Current Biometrics**, accepts Touch ID only, with no password
+fallback. The key becomes unusable if the enrolled fingerprints change. It is
+not used in this plan.
+
+The plan uses both, so that prompts are rare and mean something:
+
+| Action | Gate | Reason |
+|---|---|---|
+| Clone or fetch a public repository | none | needs no key |
+| Clone or fetch a private repository | notification only | frequent and low-stakes; the agent was given this code |
+| Clone or fetch a repository marked sensitive | Touch ID | the user chose to gate reads |
+| Push | Touch ID | changes something outside the VM |
+| Push to a protected branch | refused by GitHub | a rule, not a prompt |
+| Create, register or remove a key | done by the wizard on the host | never from the VM |
+
+This needs **two deploy keys for a repository with write access**: a read-only
+key at Notify and a write key at Require Authentication. Git in the guest
+fetches with the first and pushes with the second, using a separate push URL.
+A read-only repository has the one key.
+
+The target for a normal session: no Touch ID until the first push.
+
+**To do: decide the default gate for private reads.** The table above assumes
+notification only, with Touch ID as the per-repository opt-in. The other
+choice is Touch ID by default, with notification only as the opt-out. The
+decision is deferred until after initial testing.
+
+Keeping prompts down:
+
+- **Exact routing in the guest.** GitHub accepts any deploy key it knows, then
+  refuses the repository. A wrong key therefore costs a signature, and a
+  prompt. Each repository gets its own host alias pinned to its key.
+- **No background fetches** in the guest.
+- **Short unlock windows** for write keys, for a burst of pushes.
+- **Branch protection** carries the weight for `main`, so the push prompt does
+  not have to.
+
+### Known limits of this route
+
+- **Notify keys are open to every session.** Any session can read any
+  repository whose read key is at Notify, whether or not it was chosen for that
+  session. The notification is the only signal. Marking a repository sensitive
+  closes this for that repository, at the cost of prompts.
+- **The per-repository limit on writes is the user's attention.** A process can
+  request a signature for repository B's write key while the user expects a
+  prompt for repository A.
+- **A write key can push to any unprotected branch.**
+- **The prompt does not say what is being signed.** It reads the same for an
+  SSH login and for a file signature made with `ssh-keygen -Y sign`, and it
+  shows no destination. A process in the VM can ask a key to sign arbitrary
+  data behind a prompt that looks like a push. For a deploy key the exposure
+  is small: such a signature only counts where that key is registered as a
+  signing key.
+- **Read access is not an exfiltration limit.** The VM has no egress policy.
+- **Secretive must hold deploy keys only.** The route depends on the login
+  agent and the forwarded agent being different. If a user keeps a personal
+  GitHub key in Secretive, or uses Secretive to log in to the VM, that key is
+  on the forwarded socket and in reach of the VM, gated only by its own
+  protection level. The wizard has to detect this and warn or refuse.
+- **`setup.sh` prefers Secretive as the login agent** when 1Password is absent.
+  On such a host, installing Secretive for deploy keys and re-running
+  `setup.sh` would make it the login agent too. The wizard has to set the
+  login agent explicitly.
+
+If these are not acceptable, the stricter design is in
+[Alternatives](#alternatives).
+
+### Wizard flow
+
+1. **Check prerequisites.** The launcher has already checked the Command Line
+   Tools, Homebrew and Node. Here: Secretive installed and its agent running,
+   `gh` signed in on the host, the VM reachable. Also: the login agent is not
+   Secretive, and Secretive holds no keys other than pi-roost's deploy keys.
+2. **Pick repositories.** A searchable list from `gh`. Each repository cycles
+   through none, read and write. Public repositories offer none and write only.
+   A repository can be marked sensitive. Repositories without admin rights are
+   greyed out, because adding a deploy key needs admin.
+3. **Check write targets.** For each write choice, check branch protection on
+   the default branch and warn if it is missing.
+4. **Create keys.** One or two keys per repository in Secretive, named so the
+   host, repository and access level are readable in the Touch ID prompt, for
+   example `github.com owner/repo write`. The prompt shows the name and not
+   the destination, so the name carries it. There is no way to create a key
+   outside the app, so the wizard tells the user what to create, including
+   the three settings under Advanced (protection level, `ecdsa-256`, and the
+   attribution), waits, and
+   picks up the new public key file.
+5. **Register keys.** Add each public key to its repository with
+   `gh repo deploy-key add`, with write allowed only on write keys.
+6. **Write guest routing.** Public keys, one host alias per key, and the fetch
+   and push URL rewrites. These are routing, not a security boundary.
+7. **Launch.** Connect with the login agent set to 1Password and the forwarded
+   agent set to Secretive's socket.
+8. **Verify.** In the session: only deploy keys are listed; a chosen private
+   repository can be fetched; a push to a read-only repository is refused; a
+   push to a protected branch is refused.
+
+The wizard also needs a way to list and remove keys, on GitHub and in
+Secretive. Deploy keys do not expire.
+
+### To do
+
+- [ ] Decide the default gate for private reads, notification only or Touch
+  ID, after initial testing. See
+  [the balance](#the-balance-notify-for-routine-touch-id-for-significant).
+  The finding for spike 7 bears on this: a Notify key raises a time-sensitive
+  notification on every fetch.
+- [x] Run [WIZARD-SPIKE.md](WIZARD-SPIKE.md) and record the results. Done on a
+  test Mac, 15 November 2026.
+- [x] Repeat phase 4 of the spike on the everyday host, with 1Password as the
+  login agent. Passed on 15 November 2026.
+- [ ] Test whether the wizard can confirm a write key's protection level with
+  a test signature. See [Results of the spike](#results-of-the-spike).
+- [x] Fill the gaps in the spike results. Done on 15 November 2026.
+
+### Spikes before building
+
+Each of these can change the design. They are in order of impact.
+
+| # | Question | If the answer is no |
+|---|---|---|
+| 1 | Does forwarding Secretive's socket, with 1Password as the login agent, show only Secretive's keys in the VM? | the route does not work as planned |
+| 2 | Does the Touch ID prompt or notification name the key? | the user cannot tell which repository they are approving |
+| 3 | Can a key be created without the Secretive app, at a chosen protection level? | the wizard walks the user through the app and picks up the new public key file |
+| 4 | Can the wizard read a key's protection level? | it cannot confirm that write keys require authentication |
+| 5 | Does "leave unlocked" apply to one key or to all? | an unlock for one repository opens the others |
+| 6 | What does the prompt show as the requester for a forwarded request? | expected to be the host's `ssh`, which tells the user little |
+| 7 | Can Notify notifications be kept quiet without hiding the Touch ID ones? | reads are noisy, or the signal is lost |
+| 8 | Does GitHub accept the Secure Enclave's 256-bit EC keys as deploy keys? | the route does not work |
+| 9 | Do fetch and push use the intended key with the URL rewrites, with no extra signatures? | spurious prompts |
+
+#### Findings from Secretive's source
+
+Read from the main branch on 18 October 2026. The latest release is v4.0.0,
+from September 2026; which release contains each behaviour was not checked.
+These are readings of code, to be confirmed on the host.
+
+| # | Finding |
+|---|---|
+| 2 | Yes. The Touch ID prompt reads *sign a request from "app" using secret "name"*. The notification is titled *Signed Request from app* with *Using secret name*. |
+| 3 | No way found. There is no command-line tool, URL scheme or automation hook. |
+| 4 | Not settled. The level is recorded with the key, and may read as unknown. Public key files are named by fingerprint, not by secret name. |
+| 5 | Per key. Unlocks are stored per secret, for 5 minutes, 1 hour or 24 hours. |
+| 6 | The app at the top of the requesting process chain on the host, such as the terminal app. A process in the VM cannot be identified. |
+| 7 | No. Every signature raises a notification at the time-sensitive level, for every protection level. Turning Secretive's notifications off would also hide the "Leave Unlocked" offer, which is in the notification. |
+
+Also found:
+
+- **The destination is shown in the notification, not in the Touch ID
+  prompt.** The prompt's text is fixed in the code and has no setting. A
+  string that would add *to connect to "target"* exists but nothing uses it.
+  The host name comes from `~/.ssh/known_hosts` on the Mac running Secretive;
+  without an entry it reads as an unknown host.
+- **Secretive now offers more than one key type,** so the wizard has to ask
+  for the 256-bit ECDSA type.
+
+#### Results of the spike
+
+Run on a test Mac on 15 November 2026 with Secretive 4.0.0. The full record is
+in [WIZARD-SPIKE.md](WIZARD-SPIKE.md#results-15-november-2026).
+
+| # | Result |
+|---|---|
+| 1 | Confirmed. Only Secretive's keys were visible in the VM. Tested on a test Mac with a plain `ssh-agent` as the login agent, and on the everyday host with 1Password. |
+| 2 | Confirmed. The Touch ID prompt and the notification both name the secret. |
+| 4 | The secret's name is readable from the key comment. The protection level is not. |
+| 5 | Confirmed. An unlock covers one key. |
+| 6 | Confirmed. The requester shows as "Terminal", also through forwarding. The notification names the destination, `git@github.com`, including for a request made in the VM; the Touch ID prompt does not. |
+| 8 | Confirmed. GitHub accepts the keys as deploy keys. |
+| 9 | Confirmed. Fetch and push used the intended keys. A fetch raises one notification; a push raises one Touch ID prompt and one notification. |
+
+Spikes 3 and 7 were checked afterwards on the installed app. There is no way
+to create a key outside the app's own window. System Settings has one
+notification entry for Secretive, "SecretAgent", with no time-sensitive
+switch, so read notifications cannot be quietened on their own.
+
+What the run adds to the design:
+
+- **The wizard can match keys to secrets by name,** from the key comment. It
+  cannot check that a write key requires authentication, so it has to tell the
+  user which level to choose and trust the answer.
+- **A slow approval fails the git command.** GitHub closes the connection
+  while the prompt waits. An agent that retries raises another prompt.
+- **An unlock removes the gate for that key.** During the window, any process
+  in the VM can use the key, with or without the routing aliases. Choosing a
+  duration also costs a second Touch ID.
+- **The key comment carries the Mac's hostname** into the VM, unless a Key
+  Attribution is set. A custom attribution replaces the whole comment, name
+  included. The wizard should ask for the attribution to be the secret's name,
+  with dashes for spaces. That keeps a label to match keys by and leaves the
+  hostname out.
+- **The default protection level is Notify.** Level, key type and attribution
+  are under Advanced in the creation window, with defaults of Notify,
+  `ecdsa-256` and no attribution. A write key created without opening Advanced
+  pushes with no Touch ID, and the wizard cannot read the level to catch it.
+- **A test signature might catch it. Not tested.** After a write key is
+  created, the wizard asks it to sign something and tells the user to press
+  Deny. A signature that returns at once, with no prompt, means the key is at
+  Notify, and the wizard rejects it.
+- **The secret's name can stand in for the destination.** A name with a dot
+  and a slash, `rare.saker/test`, was accepted, shown in full in the Touch ID
+  prompt, and kept as-is in the key comment. Only spaces change, to dashes. A
+  deploy key serves one repository, so a name such as
+  `github.com owner/repo write` says more than the destination would. It is a
+  label the user typed, not something Secretive verified.
+
+### Upstream to watch
+
+Open items in Secretive's repository that would change this design. Read on
+15 November 2026. None is merged, and none has a review or a reply from the
+maintainer, whose one comment on a command-line tool is from March 2023: *"You
+could plausibly expose API to create new keys."*
+
+| Item | What it would add | Effect here |
+|---|---|---|
+| [Issue #328](https://github.com/maxgoedjen/secretive/issues/328), open since January 2022 | the request for a command-line interface | none until something is merged |
+| [PR #797](https://github.com/maxgoedjen/secretive/pull/797), open since April 2026 | commands on the app's binary, including `create-secret` with name, protection level, key type and attribution | helps: the wizard could create each key itself and would know its protection level |
+| [PR #862](https://github.com/maxgoedjen/secretive/pull/862), open since 7 November 2026 | a separate `secretive` tool, with create, rename and delete operations added to the agent's socket | a concern, below |
+| [Issue #854](https://github.com/maxgoedjen/secretive/issues/854), open since October 2026 | the requesting command and folder shown in the approval prompt | helps: the prompt would say more about what is asking |
+
+**The concern with PR #862.** It puts key management on the agent's socket,
+which is the socket this design forwards to the VM. Its description says it
+restricts changes to callers running as the same user. A forwarded request
+reaches the socket through the user's own `ssh` process, so it would likely
+pass. A process in the VM could then rename a key, and this design relies on
+the name shown in the Touch ID prompt. This is from the pull request's
+description only; the code was not read. If it is merged, check this before
+moving to that release.
+
+Until one of these lands, keys are created by hand in the app.
+
+### Alternatives
+
+- **Per-session agent.** The wizard starts an empty `ssh-agent` for each
+  session, loads only the chosen keys and forwards its socket. The limit is
+  structural, not a matter of attention. The keys must be exportable, so they
+  cannot be in the Secure Enclave; 1Password could hold them. The gate is at
+  session start, and use within the session is silent. This is the fallback if
+  spike 1, 2 or 8 fails.
+- **Filtering proxy in front of Secretive.** Passes through only the chosen
+  keys, which would give both the structural limit and Secure Enclave keys. No
+  existing tool has been looked for; it may need building.
+
+## Sources
+
+- Secretive's source, main branch at commit `164aacc` (18 October 2026):
+  `AuthenticationHandler.swift`, `Notifier.swift`, `CreationOptions.swift`,
+  `SigningRequestProvenance.swift`, `URLs.swift` and the localised strings.
+- Secretive issues [#328](https://github.com/maxgoedjen/secretive/issues/328)
+  and [#854](https://github.com/maxgoedjen/secretive/issues/854), and pull
+  requests [#797](https://github.com/maxgoedjen/secretive/pull/797) and
+  [#862](https://github.com/maxgoedjen/secretive/pull/862): descriptions and
+  comments, for the upstream items.
+- Secretive [README](https://github.com/maxgoedjen/secretive) and
+  [FAQ](https://github.com/maxgoedjen/secretive/blob/main/FAQ.md): Secure
+  Enclave storage, Touch ID, notifications, agent forwarding, public key files,
+  256-bit EC keys only.
+- Secretive issues [#251](https://github.com/maxgoedjen/secretive/issues/251)
+  and [#572](https://github.com/maxgoedjen/secretive/issues/572), and
+  discussion [#474](https://github.com/maxgoedjen/secretive/discussions/474):
+  the "leave unlocked" window, and the two protection levels being fixed at
+  creation.
+- pi's TUI library, `@earendil-works/pi-tui` 1.5.2: its `package.json` for the
+  Node version and dependencies, read from the copy installed with pi.
+- `man ssh_config`, `ForwardAgent`: "an explicit path to an agent socket".
+- [Managing deploy keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys),
+  as cited in GITHUB-ACCESS-SCOPE.md; not re-read for this plan.

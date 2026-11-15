@@ -117,6 +117,24 @@ that works with a forwarded agent.
 
 Prints a PASS/WARN/FAIL audit of the whole posture. Read-only; run it any time.
 
+On a VM cloned from a base image, expect one FAIL:
+
+```
+[ FAIL ]  account password is still the Tart default 'admin'
+```
+
+Neither `setup.sh` nor `provision.sh` changes the account password. Change it
+in a session in the VM, then run `verify.sh` again:
+
+```bash
+passwd                             # old password: admin
+```
+
+The password guards access into the VM, such as SSH with a password or Screen
+Sharing. It does not limit the agent, which already runs as that user. Not
+tested here: `passwd` may leave the login keychain on the old password, so
+macOS may ask for it later.
+
 ## Naming
 
 The VM name defaults to `<github-login>-tart-test-vm`, resolved in this order:

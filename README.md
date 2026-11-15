@@ -33,7 +33,9 @@ and a verification checklist.
 
 ## Requirements
 
-- macOS host with [Tart](https://tart.run) — `brew install cirruslabs/cli/tart`
+- macOS host with [Tart](https://tart.run) — `brew install openai/tools/tart`.
+  On Homebrew 6 or later, first run `brew tap openai/tools` and
+  `brew trust --formula openai/tools/softnet`, a dependency from the same tap
 - An SSH agent on the host: **1Password** (Settings → Developer),
   **Secretive** (`brew install secretive`), or a plain `ssh-agent` with a key
 - `nc` (ships with macOS)
@@ -67,6 +69,8 @@ ssh my-vm-git      # agent forwarded, GitHub reachable for this session
 | [WORKFLOW.md](docs/WORKFLOW.md) | daily use, the two aliases, full setup steps |
 | [MIGRATION.md](docs/MIGRATION.md) | moving an existing VM to host-held credentials |
 | [GITHUB-ACCESS-SCOPE.md](docs/GITHUB-ACCESS-SCOPE.md) | options for restricting the agent to specific repositories and permissions |
+| [WIZARD.md](docs/WIZARD.md) | design plan for a provisioning and launch wizard, starting with per-repository deploy keys |
+| [WIZARD-SPIKE.md](docs/WIZARD-SPIKE.md) | the host test plan for that design's open questions |
 | [PR-OPTIONS.md](docs/PR-OPTIONS.md) | whether to let the agent open pull requests, and the risks |
 | [APP-TOKEN.md](docs/APP-TOKEN.md) | design for a gated, short-lived PR token |
 | [SECURITY.md](docs/SECURITY.md) | threat model, residual risks, what is *not* contained |

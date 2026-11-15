@@ -63,7 +63,7 @@ done
 
 assert_host
 
-command -v tart >/dev/null || die "tart not found. Install it: brew install cirruslabs/cli/tart"
+command -v tart >/dev/null || die "tart not found. Install it: brew install openai/tools/tart"
 [ -n "$BASE" ] || { echo "error: --from cannot be empty" >&2; usage; exit 2; }
 say "base image: $BASE"
 
