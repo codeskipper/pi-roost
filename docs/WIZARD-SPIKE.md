@@ -83,7 +83,7 @@ Install Homebrew with the `Homebrew.pkg` installer from
 **2. Tart and the GitHub CLI.**
 
 ```bash
-brew install cirruslabs/cli/tart gh
+brew install openai/tools/tart gh
 gh auth login
 ```
 

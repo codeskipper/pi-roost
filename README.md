@@ -33,7 +33,7 @@ and a verification checklist.
 
 ## Requirements
 
-- macOS host with [Tart](https://tart.run) — `brew install cirruslabs/cli/tart`
+- macOS host with [Tart](https://tart.run) — `brew install openai/tools/tart`
 - An SSH agent on the host: **1Password** (Settings → Developer),
   **Secretive** (`brew install secretive`), or a plain `ssh-agent` with a key
 - `nc` (ships with macOS)

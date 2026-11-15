@@ -13,6 +13,13 @@ unchanged, leaving only a Linux provisioner. **Until that exists, for Linux
 guests prefer Docker `sbx`**, which ships credential injection and
 network-enforced egress integrated and maintained.
 
+**macOS 27 guest: planned, untested.** The kit has been run against the Tahoe
+(macOS 26) image only, which stays the default in `host/create-vm.sh`. A
+macOS 27 image is published as
+`ghcr.io/cirruslabs/macos-golden-gate-base:latest` and can be selected with
+`--from`. Before moving: run `provision.sh` and `verify.sh` against it, and
+confirm which host macOS versions can run a macOS 27 guest.
+
 Three gaps against `sbx` have identified paths, none yet implemented or
 tested:
 
