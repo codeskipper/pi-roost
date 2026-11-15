@@ -10,9 +10,9 @@ Run the phases in order. Each has a pass condition. Record what you see even
 when it passes, because several phases ask for the exact wording of a prompt.
 A negative result is a valid outcome.
 
-This plan has not been run. The paths and prompt wording come from Secretive's
-source (main branch, 18 October 2026) and may differ in the release you
-install.
+The plan was run once, on a test Mac, on 15 November 2026. The outcome is in
+[Results](#results-15-november-2026). The steps below include the corrections
+that run produced. The clean-up section has not been run yet.
 
 Phases 0 to 4 run on the **host Mac**. Phases 5 and 6 run in the VM.
 
@@ -179,7 +179,7 @@ On the host:
 
 ```bash
 brew install secretive
-open -a Secretive          # allow notifications; skip any step that edits your shell or SSH configuration
+open -a Secretive          # work through its setup window, as below
 gh repo create pi-roost-spike-a --private --add-readme
 gh repo create pi-roost-spike-b --private --add-readme
 
@@ -187,6 +187,18 @@ SOCK="$HOME/Library/Containers/com.maxgoedjen.Secretive.SecretAgent/Data/socket.
 ls -l "$SOCK"
 SSH_AUTH_SOCK="$SOCK" ssh-add -l
 ```
+
+Secretive's setup window has three steps, and its Done button stays disabled
+until all three are complete:
+
+| Step | What to do |
+|---|---|
+| Setup Agent | Click **Install**. This installs Secret Agent, the helper that holds the socket and signs requests. Allow notifications when macOS asks. |
+| Updates | Click **OK**. It is a notice that Secretive checks GitHub for new releases. |
+| Configure Integrations | Click **Configure**, then close that screen with its own **Done** button. Do not copy anything from it into your shell or SSH configuration. |
+
+The integrations screen only shows instructions, and the step counts as
+complete once the screen has been opened and closed.
 
 **Pass:** the socket exists and `ssh-add -l` answers, with no identities or
 with ones you already had. Record Secretive's version.
@@ -297,35 +309,25 @@ Leave this session open for phase 5.
 
 ## Phase 5 — Fetch and push from the VM (spikes 5 and 9)
 
-From a second terminal on the host, copy the public keys in:
+In the forwarded session in the VM, write the public key files from the
+forwarded agent. Each file should have one line.
 
 ```bash
-ssh VM 'mkdir -p ~/.ssh/spike'
-scp ~/pi-roost-spike/*.pub VM:.ssh/spike/
+mkdir -p ~/.ssh/spike
+ssh-add -L | grep ' spike-a-read@'  > ~/.ssh/spike/a-read.pub
+ssh-add -L | grep ' spike-a-write@' > ~/.ssh/spike/a-write.pub
+ssh-add -L | grep ' spike-b-write@' > ~/.ssh/spike/b-write.pub
+wc -l ~/.ssh/spike/*.pub
 ```
 
-In the forwarded session in the VM, add the routing:
+Then add the routing:
 
 ```bash
-cat >> ~/.ssh/config <<'EOF'
-# >>> pi-roost spike
-Host gh-spike-a-read
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/spike/a-read.pub
-  IdentitiesOnly yes
-Host gh-spike-a-write
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/spike/a-write.pub
-  IdentitiesOnly yes
-Host gh-spike-b-write
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/spike/b-write.pub
-  IdentitiesOnly yes
-# <<< pi-roost spike
-EOF
+echo '# >>> pi-roost spike' >> ~/.ssh/config
+for k in a-read a-write b-write; do
+  printf 'Host gh-spike-%s\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/spike/%s.pub\n  IdentitiesOnly yes\n' "$k" "$k" >> ~/.ssh/config
+done
+echo '# <<< pi-roost spike' >> ~/.ssh/config
 
 cd ~ && git clone gh-spike-a-read:OWNER/pi-roost-spike-a.git spike-a && cd spike-a
 git remote set-url --push origin gh-spike-a-write:OWNER/pi-roost-spike-a.git
@@ -337,7 +339,7 @@ Run each test and count the Touch ID prompts and notifications on the host.
 |---|---|---|
 | a | the `git clone` above | no Touch ID; one notification naming `spike a read` |
 | b | `git fetch` | no Touch ID; one notification |
-| c | `git commit --allow-empty -m spike && git push origin HEAD:spike-1` | one Touch ID prompt naming `spike a write`; the push succeeds |
+| c | `git -c user.name=spike -c user.email=spike@example.invalid commit --allow-empty -m spike && git push origin HEAD:spike-1` | one Touch ID prompt naming `spike a write`; the push succeeds |
 | d | repeat the push to `spike-2`, and press **Deny** | the push fails |
 | e | repeat the push to `spike-2` and approve; then choose **Leave Unlocked**, 5 minutes, in the notification, and authenticate again if asked | the push succeeds |
 | f | `git push origin HEAD:spike-3` within 5 minutes | no Touch ID |
@@ -390,19 +392,64 @@ rm -rf ~/.ssh/spike ~/spike-a
 
 ## Recording the result
 
-Fill in the table and append it to this file. The answers decide whether step
-1 stays on the Secretive route or falls back to the per-session agent
-described in [WIZARD.md](WIZARD.md#alternatives).
+Add a dated results section like the one below for each run. The answers
+decide whether step 1 stays on the Secretive route or falls back to the
+per-session agent described in [WIZARD.md](WIZARD.md#alternatives).
+
+## Results, 15 November 2026
+
+**Outcome: the Secretive route works.** No phase failed, and nothing found
+calls for the fallback.
+
+Setup: a separate test Mac with Touch ID. Homebrew managed by Workbrew, Tart
+2.41.1, the Tahoe base image, Secretive 4.0.0. Login to the VM with a
+throwaway key in the plain `ssh-agent`. Secretive's socket forwarded.
 
 | Spike | Question | Result |
 |---|---|---|
-| 1 | Only Secretive's keys visible in the VM? | |
-| 2 | Prompt and notification name the secret? | |
-| 3 | Key creation without the app? | |
-| 4 | Protection level readable from outside the app? | |
-| 5 | "Leave Unlocked" per key? | |
-| 6 | Requester shown, directly and through forwarding? | |
-| 7 | Notify notifications separately quietable? | |
-| 8 | GitHub accepts the keys as deploy keys? | |
-| 9 | Prompts and notifications as expected for fetch and push? | |
-| 1, repeated | Phase 4 on the everyday host, if the plan ran on a test Mac | |
+| 1 | Only Secretive's keys visible in the VM? | **Yes.** `ssh-add -l` in the VM listed the three spike keys and not the login key. |
+| 2 | Prompt and notification name the secret? | **Yes for the prompt:** *SecretAgent is trying to sign a request from "Terminal" using secret "spike a write". Touch ID or enter your password to allow.* **Yes for the notification:** *Signed Request from Terminal* / *Using secret spike a read connecting to git@github.com*. |
+| 3 | Key creation without the app? | Not recorded. The keys were created in the app, and the source shows no other way. |
+| 4 | Protection level readable from outside the app? | **No.** The secret's name is readable: it is the key comment in `ssh-add -L`, with spaces as dashes, as in `spike-a-write@secretive.<hostname>.local`. The level appears nowhere. |
+| 5 | "Leave Unlocked" per key? | **Yes.** With `spike a write` unlocked, `spike b write` still asked for Touch ID. |
+| 6 | Requester shown, directly and through forwarding? | **"Terminal" in both cases.** A process in the VM is not identified. The notification names the destination, `git@github.com`; the Touch ID prompt does not. The recorded notification came from a request made in the VM, so the destination survives forwarding. |
+| 7 | Notify notifications separately quietable? | Not recorded. |
+| 8 | GitHub accepts the keys as deploy keys? | **Yes,** as `ecdsa-sha2-nistp256`, read-only and read-write. |
+| 9 | Prompts and notifications as expected for fetch and push? | **Yes** for tests a to i. Notification counts were not recorded. |
+| 1, repeated | Phase 4 on the everyday host | Not yet run. |
+
+Phase 5 tests:
+
+| # | Result |
+|---|---|
+| a to c | As expected. The push raised one Touch ID prompt naming `spike a write`. |
+| d | Deny failed the push. |
+| e | "Leave Unlocked" was easy to find in the notification. Choosing 5 minutes raised a second Touch ID prompt. |
+| f | No prompt within the 5 minutes. |
+| g | A prompt naming `spike b write`. |
+| h | *ERROR: Repository not found.* |
+| i | *ERROR: The key you are authenticating with has been marked as read only.* |
+| j | Authenticated as `OWNER/pi-roost-spike-a` with no Touch ID prompt. Most likely `spike a write`, the first key in the agent, still unlocked from test e. |
+
+Phase 6: after the forwarded session closed, the VM reached no agent and
+GitHub answered *Permission denied (publickey)*.
+
+Findings beyond the nine questions:
+
+- **A slow approval fails the command.** While the Touch ID prompt waited,
+  GitHub closed the connection (*Received disconnect ... Bye Bye*). The same
+  command succeeded when approved promptly.
+- **An unlocked write key is open to any request.** Test j used a write key
+  with no prompt and no routing. For the length of an unlock, Touch ID does not
+  gate that key.
+- **The key comment carries the Mac's hostname** into the VM. Secretive's Key
+  Attribution field can set that text.
+- **The setup steps needed five corrections,** now in the plan: the Tart tap
+  and Homebrew trust, `--tart-ip`, `--hostname`, Secretive's setup window, and
+  writing the routing without a heredoc.
+
+Still open:
+
+- Notification counts, and spikes 3 and 7.
+- Phase 4 on the everyday host.
+- Clean-up of the test repositories, deploy keys and secrets.

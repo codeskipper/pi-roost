@@ -5,12 +5,13 @@ of the pi coding agent. It guides the user to the best-fit options for
 provisioning and launching the pi VM, and lets them pick.
 
 **Status: design, nothing built.** The plan is worked out one feature at a
-time. Step 1 is designed below. Later steps are listed but not designed.
+time. Step 1 is designed below, and its route was confirmed by a spike on a
+test Mac on 15 November 2026. Later steps are listed but not designed.
 
 The claims about Secretive come from its README, FAQ, issue tracker and
-source. The OpenSSH options were checked against the man pages. Nothing has
-been run. The [spikes](#spikes-before-building) list what has to be confirmed
-first, and [WIZARD-SPIKE.md](WIZARD-SPIKE.md) is the plan for running them.
+source, and from that spike. The OpenSSH options were checked against the man
+pages. The [spikes](#spikes-before-building) list the questions, and
+[WIZARD-SPIKE.md](WIZARD-SPIKE.md) has the test plan and its results.
 
 ## Steps
 
@@ -205,8 +206,12 @@ Secretive. Deploy keys do not expire.
   [the balance](#the-balance-notify-for-routine-touch-id-for-significant).
   The finding for spike 7 bears on this: a Notify key raises a time-sensitive
   notification on every fetch.
-- [ ] Run [WIZARD-SPIKE.md](WIZARD-SPIKE.md) on the host and record the
-  results.
+- [x] Run [WIZARD-SPIKE.md](WIZARD-SPIKE.md) and record the results. Done on a
+  test Mac, 15 November 2026.
+- [ ] Repeat phase 4 of the spike on the everyday host, with 1Password as the
+  login agent.
+- [ ] Fill the gaps in the spike results: notification counts, and spikes 3
+  and 7.
 
 ### Spikes before building
 
@@ -240,11 +245,39 @@ These are readings of code, to be confirmed on the host.
 | 7 | No. Every signature raises a notification at the time-sensitive level, for every protection level. Turning Secretive's notifications off would also hide the "Leave Unlocked" offer, which is in the notification. |
 
 Also found: the prompt and notification can name the destination, as in *to
-connect to "target"*. Whether that works for a forwarded request is part of
-the spike plan. Secretive now offers more than one key type, so the wizard
+connect to "target"*. The spike showed the notification doing so for a
+forwarded request, and the Touch ID prompt in 4.0.0 not doing so. Secretive now offers more than one key type, so the wizard
 has to ask for the 256-bit ECDSA type.
 
-Spikes 1, 8 and 9 can only be answered on the host.
+#### Results of the spike
+
+Run on a test Mac on 15 November 2026 with Secretive 4.0.0. The full record is
+in [WIZARD-SPIKE.md](WIZARD-SPIKE.md#results-15-november-2026).
+
+| # | Result |
+|---|---|
+| 1 | Confirmed. Only Secretive's keys were visible in the VM. Tested with a plain `ssh-agent` as the login agent; the 1Password pairing is still to check. |
+| 2 | Confirmed. The Touch ID prompt and the notification both name the secret. |
+| 4 | The secret's name is readable from the key comment. The protection level is not. |
+| 5 | Confirmed. An unlock covers one key. |
+| 6 | Confirmed. The requester shows as "Terminal", also through forwarding. The notification names the destination, `git@github.com`, including for a request made in the VM; the Touch ID prompt does not. |
+| 8 | Confirmed. GitHub accepts the keys as deploy keys. |
+| 9 | Confirmed. Fetch and push used the intended keys, with one prompt for a push. |
+
+Spikes 3 and 7 were not recorded in the run; the source findings above stand.
+
+What the run adds to the design:
+
+- **The wizard can match keys to secrets by name,** from the key comment. It
+  cannot check that a write key requires authentication, so it has to tell the
+  user which level to choose and trust the answer.
+- **A slow approval fails the git command.** GitHub closes the connection
+  while the prompt waits. An agent that retries raises another prompt.
+- **An unlock removes the gate for that key.** During the window, any process
+  in the VM can use the key, with or without the routing aliases. Choosing a
+  duration also costs a second Touch ID.
+- **The key comment carries the Mac's hostname** into the VM. The wizard can
+  ask for a Key Attribution value that leaves it out.
 
 ### Alternatives
 
