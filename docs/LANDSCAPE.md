@@ -151,7 +151,7 @@ Sources:
   removed in a future release."* Each function carries
   `API_DEPRECATED("No longer supported", macos(10.5, 10.8))`, so the API has
   been deprecated since macOS 10.8.
-- **Apple Developer Technical Support**, forum thread
+- **Apple Developer Technical Support (DTS)**, forum thread
   [777509](https://developer.apple.com/forums/thread/777509), March 2025:
   *"What you're doing here is unsupported. While there is a public API for
   setting up a custom sandbox, albeit a deprecated one, the sandbox programming
