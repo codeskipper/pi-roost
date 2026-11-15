@@ -190,9 +190,10 @@ If these are not acceptable, the stricter design is in
 4. **Create keys.** One or two keys per repository in Secretive, named so the
    host, repository and access level are readable in the Touch ID prompt, for
    example `github.com owner/repo write`. The prompt shows the name and not
-   the destination, so the name carries it. The source shows no way to create
-   a key
-   outside the app, so the wizard tells the user what to create, waits, and
+   the destination, so the name carries it. There is no way to create a key
+   outside the app, so the wizard tells the user what to create, including
+   the three settings under Advanced (protection level, `ecdsa-256`, and the
+   attribution), waits, and
    picks up the new public key file.
 5. **Register keys.** Add each public key to its repository with
    `gh repo deploy-key add`, with write allowed only on write keys.
@@ -216,8 +217,10 @@ Secretive. Deploy keys do not expire.
   notification on every fetch.
 - [x] Run [WIZARD-SPIKE.md](WIZARD-SPIKE.md) and record the results. Done on a
   test Mac, 15 November 2026.
-- [ ] Repeat phase 4 of the spike on the everyday host, with 1Password as the
-  login agent.
+- [x] Repeat phase 4 of the spike on the everyday host, with 1Password as the
+  login agent. Passed on 15 November 2026.
+- [ ] Test whether the wizard can confirm a write key's protection level with
+  a test signature. See [Results of the spike](#results-of-the-spike).
 - [x] Fill the gaps in the spike results. Done on 15 November 2026.
 
 ### Spikes before building
@@ -268,7 +271,7 @@ in [WIZARD-SPIKE.md](WIZARD-SPIKE.md#results-15-november-2026).
 
 | # | Result |
 |---|---|
-| 1 | Confirmed. Only Secretive's keys were visible in the VM. Tested with a plain `ssh-agent` as the login agent; the 1Password pairing is still to check. |
+| 1 | Confirmed. Only Secretive's keys were visible in the VM. Tested on a test Mac with a plain `ssh-agent` as the login agent, and on the everyday host with 1Password. |
 | 2 | Confirmed. The Touch ID prompt and the notification both name the secret. |
 | 4 | The secret's name is readable from the key comment. The protection level is not. |
 | 5 | Confirmed. An unlock covers one key. |
@@ -291,8 +294,19 @@ What the run adds to the design:
 - **An unlock removes the gate for that key.** During the window, any process
   in the VM can use the key, with or without the routing aliases. Choosing a
   duration also costs a second Touch ID.
-- **The key comment carries the Mac's hostname** into the VM. The wizard can
-  ask for a Key Attribution value that leaves it out.
+- **The key comment carries the Mac's hostname** into the VM, unless a Key
+  Attribution is set. A custom attribution replaces the whole comment, name
+  included. The wizard should ask for the attribution to be the secret's name,
+  with dashes for spaces. That keeps a label to match keys by and leaves the
+  hostname out.
+- **The default protection level is Notify.** Level, key type and attribution
+  are under Advanced in the creation window, with defaults of Notify,
+  `ecdsa-256` and no attribution. A write key created without opening Advanced
+  pushes with no Touch ID, and the wizard cannot read the level to catch it.
+- **A test signature might catch it. Not tested.** After a write key is
+  created, the wizard asks it to sign something and tells the user to press
+  Deny. A signature that returns at once, with no prompt, means the key is at
+  Notify, and the wizard rejects it.
 - **The secret's name can stand in for the destination.** A name with a dot
   and a slash, `rare.saker/test`, was accepted, shown in full in the Touch ID
   prompt, and kept as-is in the key comment. Only spaces change, to dashes. A

@@ -442,7 +442,7 @@ throwaway key in the plain `ssh-agent`. Secretive's socket forwarded.
 | 7 | Notify notifications separately quietable? | **No.** System Settings lists one entry, "SecretAgent", so all of Secretive's notifications are switched together. The panel has no time-sensitive switch. |
 | 8 | GitHub accepts the keys as deploy keys? | **Yes,** as `ecdsa-sha2-nistp256`, read-only and read-write. |
 | 9 | Prompts and notifications as expected for fetch and push? | **Yes** for tests a to i. Counted afterwards in a forwarded session: one notification for each of two fetches; one Touch ID prompt and one notification for a push. Notification Centre put the two read notifications in one group and the write notification in another. |
-| 1, repeated | Phase 4 on the everyday host | Not yet run. |
+| 1, repeated | Phase 4 on the everyday host | **Yes.** With 1Password as the login agent and Secretive's socket forwarded, the VM listed the one Secretive test key and not the personal key held in 1Password. `ssh -G` showed `identityagent` as 1Password's socket and `forwardagent` as Secretive's. |
 
 Phase 5 tests:
 
@@ -484,9 +484,17 @@ was a file signature. A
 secret's name can therefore carry the host and repository into the prompt,
 which does not show the destination itself.
 
-Still open:
+Found while creating the test key on the everyday host:
 
-- Phase 4 on the everyday host.
+- **The creation window's defaults.** Protection level, key type and key
+  attribution sit under Advanced. The defaults are Notify, `ecdsa-256` and an
+  empty attribution. A key created without opening Advanced signs with no
+  Touch ID.
+- **A custom attribution replaces the whole key comment.** With the
+  attribution set to `spike-phase4-attr`, `ssh-add -L` ended the line with
+  that text alone: no secret name and no hostname.
+
+Nothing from the plan is still open.
 
 The clean-up was run on the test Mac the same day, without the optional
 steps, so that `gh` login still has the `delete_repo` scope.
