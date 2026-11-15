@@ -300,6 +300,31 @@ What the run adds to the design:
   `github.com owner/repo write` says more than the destination would. It is a
   label the user typed, not something Secretive verified.
 
+### Upstream to watch
+
+Open items in Secretive's repository that would change this design. Read on
+15 November 2026. None is merged, and none has a review or a reply from the
+maintainer, whose one comment on a command-line tool is from March 2023: *"You
+could plausibly expose API to create new keys."*
+
+| Item | What it would add | Effect here |
+|---|---|---|
+| [Issue #328](https://github.com/maxgoedjen/secretive/issues/328), open since January 2022 | the request for a command-line interface | none until something is merged |
+| [PR #797](https://github.com/maxgoedjen/secretive/pull/797), open since April 2026 | commands on the app's binary, including `create-secret` with name, protection level, key type and attribution | helps: the wizard could create each key itself and would know its protection level |
+| [PR #862](https://github.com/maxgoedjen/secretive/pull/862), open since 7 November 2026 | a separate `secretive` tool, with create, rename and delete operations added to the agent's socket | a concern, below |
+| [Issue #854](https://github.com/maxgoedjen/secretive/issues/854), open since October 2026 | the requesting command and folder shown in the approval prompt | helps: the prompt would say more about what is asking |
+
+**The concern with PR #862.** It puts key management on the agent's socket,
+which is the socket this design forwards to the VM. Its description says it
+restricts changes to callers running as the same user. A forwarded request
+reaches the socket through the user's own `ssh` process, so it would likely
+pass. A process in the VM could then rename a key, and this design relies on
+the name shown in the Touch ID prompt. This is from the pull request's
+description only; the code was not read. If it is merged, check this before
+moving to that release.
+
+Until one of these lands, keys are created by hand in the app.
+
 ### Alternatives
 
 - **Per-session agent.** The wizard starts an empty `ssh-agent` for each
@@ -317,6 +342,11 @@ What the run adds to the design:
 - Secretive's source, main branch at commit `164aacc` (18 October 2026):
   `AuthenticationHandler.swift`, `Notifier.swift`, `CreationOptions.swift`,
   `SigningRequestProvenance.swift`, `URLs.swift` and the localised strings.
+- Secretive issues [#328](https://github.com/maxgoedjen/secretive/issues/328)
+  and [#854](https://github.com/maxgoedjen/secretive/issues/854), and pull
+  requests [#797](https://github.com/maxgoedjen/secretive/pull/797) and
+  [#862](https://github.com/maxgoedjen/secretive/pull/862): descriptions and
+  comments, for the upstream items.
 - Secretive [README](https://github.com/maxgoedjen/secretive) and
   [FAQ](https://github.com/maxgoedjen/secretive/blob/main/FAQ.md): Secure
   Enclave storage, Touch ID, notifications, agent forwarding, public key files,
