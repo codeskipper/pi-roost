@@ -131,19 +131,36 @@ ssh-add ~/.ssh/pi-roost-spike-login
 on the Cirrus Labs base images.
 
 ```bash
-host/setup.sh --identity-agent "$SSH_AUTH_SOCK"
+host/setup.sh --identity-agent "$SSH_AUTH_SOCK" --tart-ip
 ```
 
 Pass `--identity-agent` explicitly. Without it, `setup.sh` prefers Secretive's
-socket over the plain agent whenever Secretive is installed. If the VM's name
-does not resolve, add `--tart-ip`.
+socket over the plain agent whenever Secretive is installed.
+
+Pass `--tart-ip` on a VM that has not been provisioned yet. Without it,
+`setup.sh` connects to `<vm-name>.local`, a name the VM only takes when
+`provision.sh` renames it in step 7. The script then waits at "Installing your
+public key into the VM" with no password prompt.
 
 **7. Provision and verify the VM.** Replace `VM` with the alias from step 6.
 
 ```bash
 rsync -a --exclude .git ./ VM:~/pi-roost/
-ssh VM 'cd pi-roost && ./guest/macos/provision.sh && ./guest/macos/verify.sh'
+ssh VM 'cd pi-roost && ./guest/macos/provision.sh --hostname VM && ./guest/macos/verify.sh'
+ssh-keygen -R VM
+ssh VM          # accept the new host key
 ```
+
+Pass `--hostname` explicitly. Without it, `provision.sh` derives the name from
+your GitHub login through `gh` or a forwarded agent, and neither can supply it
+here: the throwaway login key is not on GitHub.
+
+`provision.sh` regenerates the VM's SSH host keys, so the host's saved key for
+the alias no longer matches. `ssh-keygen -R` removes the old one.
+
+`setup.sh` ends by suggesting that you add your public key to GitHub and run
+`verify.sh --network`. Skip both for the spike. The login key should only open
+the VM, and the network check would test GitHub access with it.
 
 **Ready when:** `ssh VM` opens a session without a password, and in it
 `ssh-add -l` reports that no agent is reachable.
