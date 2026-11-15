@@ -12,7 +12,7 @@ A negative result is a valid outcome.
 
 The plan was run once, on a test Mac, on 15 November 2026. The outcome is in
 [Results](#results-15-november-2026). The steps below include the corrections
-that run produced. The clean-up section has not been run yet.
+that run produced.
 
 Phases 0 to 4 run on the **host Mac**. Phases 5 and 6 run in the VM.
 
@@ -370,25 +370,51 @@ ssh VM 'ssh-add -l; ssh -T -o BatchMode=yes git@github.com'
 
 ## Clean up
 
-On the host:
+This removes what the spike created. It leaves the VM, Tart and Secretive in
+place.
+
+**1. In the VM.** The `sed` line deletes the routing block between its two
+markers. The `grep` should print `0`.
 
 ```bash
-gh repo deploy-key list -R OWNER/pi-roost-spike-a     # note the IDs
-gh repo deploy-key delete <id> -R OWNER/pi-roost-spike-a
-gh repo deploy-key list -R OWNER/pi-roost-spike-b
-gh repo deploy-key delete <id> -R OWNER/pi-roost-spike-b
+ssh VM
+sed -i '' '/^# >>> pi-roost spike$/,/^# <<< pi-roost spike$/d' ~/.ssh/config
+rm -rf ~/.ssh/spike ~/spike-a
+grep -c 'gh-spike' ~/.ssh/config
+exit
+```
+
+**2. On GitHub.** Deleting a repository removes its deploy keys and branches
+with it. `gh` needs the `delete_repo` scope for this; the alternative is to
+delete each repository on github.com, under Settings.
+
+```bash
+gh auth refresh -h github.com -s delete_repo
+gh repo delete OWNER/pi-roost-spike-a --yes
+gh repo delete OWNER/pi-roost-spike-b --yes
+gh repo list OWNER --limit 20 | grep spike      # should print nothing
+```
+
+**3. In Secretive.** Delete the test secrets in the app, then check that the
+agent holds none:
+
+```bash
+SSH_AUTH_SOCK="$SOCK" ssh-add -l
+```
+
+**4. On the host.**
+
+```bash
+unset GIT_SSH_COMMAND
 rm -r ~/pi-roost-spike
 ```
 
-Delete the two test repositories on GitHub, and the three secrets in the
-Secretive app.
+Optional:
 
-In the VM, remove the block between `# >>> pi-roost spike` and
-`# <<< pi-roost spike` from `~/.ssh/config`, then:
-
-```bash
-rm -rf ~/.ssh/spike ~/spike-a
-```
+- Remove the extra scope again:
+  `gh auth refresh -h github.com --remove-scopes delete_repo`.
+- Leave the `pi-roost-spike-login` key in place for as long as the VM is in
+  use. It is what opens it.
 
 ## Recording the result
 
@@ -461,4 +487,6 @@ which does not show the destination itself.
 Still open:
 
 - Phase 4 on the everyday host.
-- Clean-up of the test repositories, deploy keys and secrets.
+
+The clean-up was run on the test Mac the same day, without the optional
+steps, so that `gh` login still has the `delete_repo` scope.
