@@ -448,6 +448,16 @@ Findings beyond the nine questions:
   and Homebrew trust, `--tart-ip`, `--hostname`, Secretive's setup window, and
   writing the routing without a heredoc.
 
+Follow-up on the same day, on naming: a secret named `rare.saker/test` was
+accepted. The Touch ID prompt showed the name in full: *SecretAgent is trying
+to sign a request from "Terminal" using secret "rare.saker/test".* The key
+comment was `rare.saker/test@secretive.<hostname>.local`. The test used
+`ssh-keygen -Y sign` against Secretive's socket, with no GitHub access. The
+prompt's wording was the same as for an SSH login; it did not say that this
+was a file signature. A
+secret's name can therefore carry the host and repository into the prompt,
+which does not show the destination itself.
+
 Still open:
 
 - Notification counts, and spikes 3 and 7.

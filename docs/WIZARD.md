@@ -155,6 +155,12 @@ Keeping prompts down:
   request a signature for repository B's write key while the user expects a
   prompt for repository A.
 - **A write key can push to any unprotected branch.**
+- **The prompt does not say what is being signed.** It reads the same for an
+  SSH login and for a file signature made with `ssh-keygen -Y sign`, and it
+  shows no destination. A process in the VM can ask a key to sign arbitrary
+  data behind a prompt that looks like a push. For a deploy key the exposure
+  is small: such a signature only counts where that key is registered as a
+  signing key.
 - **Read access is not an exfiltration limit.** The VM has no egress policy.
 - **Secretive must hold deploy keys only.** The route depends on the login
   agent and the forwarded agent being different. If a user keeps a personal
@@ -182,8 +188,10 @@ If these are not acceptable, the stricter design is in
 3. **Check write targets.** For each write choice, check branch protection on
    the default branch and warn if it is missing.
 4. **Create keys.** One or two keys per repository in Secretive, named so the
-   repository and access level are readable in a prompt, for example
-   `pi-roost owner/repo write`. The source shows no way to create a key
+   host, repository and access level are readable in the Touch ID prompt, for
+   example `github.com owner/repo write`. The prompt shows the name and not
+   the destination, so the name carries it. The source shows no way to create
+   a key
    outside the app, so the wizard tells the user what to create, waits, and
    picks up the new public key file.
 5. **Register keys.** Add each public key to its repository with
@@ -244,10 +252,15 @@ These are readings of code, to be confirmed on the host.
 | 6 | The app at the top of the requesting process chain on the host, such as the terminal app. A process in the VM cannot be identified. |
 | 7 | No. Every signature raises a notification at the time-sensitive level, for every protection level. Turning Secretive's notifications off would also hide the "Leave Unlocked" offer, which is in the notification. |
 
-Also found: the prompt and notification can name the destination, as in *to
-connect to "target"*. The spike showed the notification doing so for a
-forwarded request, and the Touch ID prompt in 4.0.0 not doing so. Secretive now offers more than one key type, so the wizard
-has to ask for the 256-bit ECDSA type.
+Also found:
+
+- **The destination is shown in the notification, not in the Touch ID
+  prompt.** The prompt's text is fixed in the code and has no setting. A
+  string that would add *to connect to "target"* exists but nothing uses it.
+  The host name comes from `~/.ssh/known_hosts` on the Mac running Secretive;
+  without an entry it reads as an unknown host.
+- **Secretive now offers more than one key type,** so the wizard has to ask
+  for the 256-bit ECDSA type.
 
 #### Results of the spike
 
@@ -278,6 +291,12 @@ What the run adds to the design:
   duration also costs a second Touch ID.
 - **The key comment carries the Mac's hostname** into the VM. The wizard can
   ask for a Key Attribution value that leaves it out.
+- **The secret's name can stand in for the destination.** A name with a dot
+  and a slash, `rare.saker/test`, was accepted, shown in full in the Touch ID
+  prompt, and kept as-is in the key comment. Only spaces change, to dashes. A
+  deploy key serves one repository, so a name such as
+  `github.com owner/repo write` says more than the destination would. It is a
+  label the user typed, not something Secretive verified.
 
 ### Alternatives
 
