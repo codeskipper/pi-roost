@@ -218,8 +218,7 @@ Secretive. Deploy keys do not expire.
   test Mac, 15 November 2026.
 - [ ] Repeat phase 4 of the spike on the everyday host, with 1Password as the
   login agent.
-- [ ] Fill the gaps in the spike results: notification counts, and spikes 3
-  and 7.
+- [x] Fill the gaps in the spike results. Done on 15 November 2026.
 
 ### Spikes before building
 
@@ -275,9 +274,12 @@ in [WIZARD-SPIKE.md](WIZARD-SPIKE.md#results-15-november-2026).
 | 5 | Confirmed. An unlock covers one key. |
 | 6 | Confirmed. The requester shows as "Terminal", also through forwarding. The notification names the destination, `git@github.com`, including for a request made in the VM; the Touch ID prompt does not. |
 | 8 | Confirmed. GitHub accepts the keys as deploy keys. |
-| 9 | Confirmed. Fetch and push used the intended keys, with one prompt for a push. |
+| 9 | Confirmed. Fetch and push used the intended keys. A fetch raises one notification; a push raises one Touch ID prompt and one notification. |
 
-Spikes 3 and 7 were not recorded in the run; the source findings above stand.
+Spikes 3 and 7 were checked afterwards on the installed app. There is no way
+to create a key outside the app's own window. System Settings has one
+notification entry for Secretive, "SecretAgent", with no time-sensitive
+switch, so read notifications cannot be quietened on their own.
 
 What the run adds to the design:
 

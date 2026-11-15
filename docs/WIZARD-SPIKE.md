@@ -409,13 +409,13 @@ throwaway key in the plain `ssh-agent`. Secretive's socket forwarded.
 |---|---|---|
 | 1 | Only Secretive's keys visible in the VM? | **Yes.** `ssh-add -l` in the VM listed the three spike keys and not the login key. |
 | 2 | Prompt and notification name the secret? | **Yes for the prompt:** *SecretAgent is trying to sign a request from "Terminal" using secret "spike a write". Touch ID or enter your password to allow.* **Yes for the notification:** *Signed Request from Terminal* / *Using secret spike a read connecting to git@github.com*. |
-| 3 | Key creation without the app? | Not recorded. The keys were created in the app, and the source shows no other way. |
+| 3 | Key creation without the app? | **No.** In the app, the "+" button, the File menu's New Secret item and its keyboard shortcut all open the same window. Secretive 4.0.0 registers no URL scheme, declares no AppleScript support, and ships no scripting definition or Shortcuts actions. |
 | 4 | Protection level readable from outside the app? | **No.** The secret's name is readable: it is the key comment in `ssh-add -L`, with spaces as dashes, as in `spike-a-write@secretive.<hostname>.local`. The level appears nowhere. |
 | 5 | "Leave Unlocked" per key? | **Yes.** With `spike a write` unlocked, `spike b write` still asked for Touch ID. |
 | 6 | Requester shown, directly and through forwarding? | **"Terminal" in both cases.** A process in the VM is not identified. The notification names the destination, `git@github.com`; the Touch ID prompt does not. The recorded notification came from a request made in the VM, so the destination survives forwarding. |
-| 7 | Notify notifications separately quietable? | Not recorded. |
+| 7 | Notify notifications separately quietable? | **No.** System Settings lists one entry, "SecretAgent", so all of Secretive's notifications are switched together. The panel has no time-sensitive switch. |
 | 8 | GitHub accepts the keys as deploy keys? | **Yes,** as `ecdsa-sha2-nistp256`, read-only and read-write. |
-| 9 | Prompts and notifications as expected for fetch and push? | **Yes** for tests a to i. Notification counts were not recorded. |
+| 9 | Prompts and notifications as expected for fetch and push? | **Yes** for tests a to i. Counted afterwards in a forwarded session: one notification for each of two fetches; one Touch ID prompt and one notification for a push. Notification Centre put the two read notifications in one group and the write notification in another. |
 | 1, repeated | Phase 4 on the everyday host | Not yet run. |
 
 Phase 5 tests:
@@ -460,6 +460,5 @@ which does not show the destination itself.
 
 Still open:
 
-- Notification counts, and spikes 3 and 7.
 - Phase 4 on the everyday host.
 - Clean-up of the test repositories, deploy keys and secrets.
