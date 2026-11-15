@@ -18,9 +18,51 @@ OpenSSH options were checked against the man pages. Nothing has been run. The
 | 1 | Limit GitHub access to chosen repositories with per-repository deploy keys | designed below |
 | later | VM creation and provisioning, model-token gateway, egress policy, per-task VMs | not designed |
 
-The TUI stack is also undecided. pi's TUI library is an MIT-licensed Node
-package, so matching the look means Node on the host. The kit is bash-only
-today.
+## Runtime and launcher
+
+The wizard uses pi's own TUI library, `@earendil-works/pi-tui`, so the look is
+pi's and not an imitation. The library is an MIT-licensed Node package. Version
+1.5.2 needs Node 22.19 or later and has three direct dependencies, pinned to
+exact versions. The kit is bash-only today, so Node is new on the host.
+
+Node is optional. The wizard is a front end over the `host/*.sh` scripts, and
+an operator who does not want Node runs those scripts directly.
+
+The wizard needs Node to start, so a small bash launcher runs first, with
+plain-text prompts. The pi look begins once the wizard itself is running.
+
+### Assumed on the host
+
+The Xcode Command Line Tools and Homebrew are assumed to be installed. The
+launcher checks for both. If one is missing it says so, suggests how to
+install it, and stops. It does not install either itself.
+
+| Missing | Suggestion |
+|---|---|
+| Command Line Tools | `xcode-select --install` |
+| Homebrew | the `Homebrew.pkg` installer from <https://github.com/Homebrew/brew/releases/latest> |
+
+### Finding or installing Node
+
+1. **Look for Node.** On the `PATH`, or installed globally. It counts as found
+   only if it is 22.19 or later. An older Node is treated as not found and is
+   left untouched.
+2. **If found, use it.**
+3. **If not found, ask the operator** to choose:
+   - **System-wide:** `brew install node`.
+   - **Private:** a pinned Node in a folder pi-roost owns, not on the `PATH`.
+     The download is verified against its published checksum. Deleting the
+     folder removes it.
+   - **Neither:** stop, and point to the `host/*.sh` scripts.
+4. **Remember the answer,** so the launcher does not ask on every run.
+
+In every case the wizard's npm packages go in pi-roost's own folder, installed
+from a lockfile with install scripts disabled. Nothing is installed with
+`npm install -g`. The operator's choice is only about where the runtime lives.
+The wizard needs no network access for its packages once they are installed.
+
+The cost of using an existing Node: the wizard runs on whatever version each
+host has, above the minimum.
 
 ## Step 1: GitHub access per repository
 
@@ -106,8 +148,9 @@ If these are not acceptable, the stricter design is in
 
 ### Wizard flow
 
-1. **Check prerequisites.** Secretive installed and its agent running, `gh`
-   signed in on the host, the VM reachable.
+1. **Check prerequisites.** The launcher has already checked the Command Line
+   Tools, Homebrew and Node. Here: Secretive installed and its agent running,
+   `gh` signed in on the host, the VM reachable.
 2. **Pick repositories.** A searchable list from `gh`. Each repository cycles
    through none, read and write. Public repositories offer none and write only.
    A repository can be marked sensitive. Repositories without admin rights are
@@ -175,6 +218,8 @@ Each of these can change the design. They are in order of impact.
   discussion [#474](https://github.com/maxgoedjen/secretive/discussions/474):
   the "leave unlocked" window, and the two protection levels being fixed at
   creation.
+- pi's TUI library, `@earendil-works/pi-tui` 1.5.2: its `package.json` for the
+  Node version and dependencies, read from the copy installed with pi.
 - `man ssh_config`, `ForwardAgent`: "an explicit path to an agent socket".
 - [Managing deploy keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys),
   as cited in GITHUB-ACCESS-SCOPE.md; not re-read for this plan.
