@@ -9,7 +9,9 @@ signing agent can cover it.
 nothing else on this page. The tables are from general knowledge and were not
 checked against vendor documentation. Verify a row before designing around it.
 
-For the brokering shapes themselves, see [BROKERING.md](BROKERING.md). For the
+For the brokering shapes themselves, see [BROKERING.md](BROKERING.md), and
+[Beyond the model token](BROKERING.md#beyond-the-model-token) for how the
+options surveyed there measure up against these types. For the
 credentials this kit handles now, see [CREDENTIALS.md](CREDENTIALS.md).
 
 ## Types and what covers them

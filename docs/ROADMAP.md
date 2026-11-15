@@ -20,7 +20,7 @@ tested:
 |---|---|---|
 | Ephemerality | `tart clone` a golden image per task, then `tart delete` | not built; `provision.sh` + `create-vm.sh` are most of it |
 | Egress enforcement | `pf` anchor on the vmnet bridge | sketched, untested |
-| Provider token | a credential broker via pi's `httpProxy` | researched with a spike plan — [docs/BROKERING.md](BROKERING.md) |
+| Provider token | a host-side LLM gateway via pi's custom-provider `baseUrl` | researched with a spike plan — [docs/BROKERING.md](BROKERING.md) |
 
 All three are **host-side**, so building them for the macOS guest makes Linux
 guest support cheap later. What separates this from `sbx` is not capability but

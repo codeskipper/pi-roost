@@ -48,7 +48,7 @@ that holds the real key:
 
 | Project | Pattern | Status for this kit |
 |---|---|---|
-| [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/virtual_keys) | gateway; holds provider keys, issues virtual keys | **best fit** — OSS, self-hosted, no CA needed, native `github_copilot` provider |
+| [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/virtual_keys) | gateway; holds provider keys, issues virtual keys | **best fit for the model token** — OSS, self-hosted, no CA needed, native `github_copilot` provider |
 | [Infisical Agent Vault](https://infisical.com/docs/documentation/platform/agent-vault/overview) | injecting proxy, platform edition | viable, **check licensing first** |
 | ~~[standalone Agent Vault](https://github.com/Infisical/agent-vault)~~ | injecting proxy | **deprecated — do not use** |
 | [mitmproxy](https://mitmproxy.org) + addon | injecting proxy, DIY | mature base, you write the policy |
@@ -175,7 +175,9 @@ takes all three mechanisms together:
 | *gateway key* | — | **VM, low value** |
 
 After all three, the VM holds exactly one secret: a key that works only against
-a service on your Mac.
+a service on your Mac. That count covers the kit's three credentials only. Any
+other credential the agent is given is outside it — see
+[Beyond the model token](#beyond-the-model-token).
 
 ### Licensing
 
@@ -206,6 +208,44 @@ this kit does not need. Verify against current terms before depending on it.
    third-party client is the same question whether pi calls it directly or via
    a gateway. LiteLLM's docs describe per-person use against that person's own
    Copilot plan.
+
+## Beyond the model token
+
+[CREDENTIAL-CATEGORIES.md](CREDENTIAL-CATEGORIES.md) lists the other
+credentials an agent is likely to be given, by type. Set against the options
+above, the gateway covers a small part of that list and no single option
+covers the rest. This is a desk comparison of the two pages. None of it has
+been tested.
+
+| Credential types | Which option above covers them |
+|---|---|
+| Model-provider keys, and pi's Copilot login (an OAuth refresh token) | the LiteLLM gateway |
+| Other static bearer tokens, basic auth | an injecting proxy only (mitmproxy with an addon, or Infisical Agent Vault) |
+| OAuth client credentials (Jamf, Workspace ONE, Graph) | an injecting proxy, if it can substitute a secret in a request body and not only a header; otherwise a host-side helper that does the exchange, which nothing above provides |
+| OAuth refresh tokens for SaaS and MCP servers | none above; run the MCP server on the host, so it holds the token and the agent reaches it over the network |
+| Request-signing keys (App Store Connect, APNs, AWS) | none; a header swap cannot sign. Needs a host-side helper that mints or re-signs, or short-lived AWS sessions |
+| Client certificates | an injecting proxy that terminates TLS, in principle; not checked for any option above |
+| Artifact- and challenge-signing keys | not an HTTP matter. The kit's SSH agent forwarding is the model; code signing stays on the host |
+| Passwords over non-HTTP protocols, browser sessions | none |
+| Unlocking secrets, human credentials, server-held tokens | not brokerable by design |
+
+What this changes:
+
+- **Best fit is per type, not one product.** The gateway stays the choice for
+  model traffic. Covering other HTTP APIs needs an injecting proxy next to it,
+  which is the trade this page said to revisit.
+- **The CA cost grows with coverage.** With an injecting proxy, every tool the
+  agent runs has to trust the CA, not only pi. Each toolchain has its own CA
+  setting.
+- **Brokering controls leaks, not use.** Injection is unattended, so the agent
+  can use a brokered credential whenever it likes. For publishing, payments
+  and production data, scope the credential first: a test-mode key, a
+  read-only token, a single project. Whether any option above offers an
+  approval step has not been checked.
+- **cplt does not extend to the list.** It masks GitHub-prefixed tokens only.
+- **Some types need building, not choosing.** The host-side helpers for OAuth
+  exchanges and request signing are small scripts, but nothing surveyed here
+  ships them.
 
 ## Does this replace your SSH agent?
 
