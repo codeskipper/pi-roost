@@ -74,6 +74,7 @@ ssh my-vm-git      # agent forwarded, GitHub reachable for this session
 | [LANDSCAPE.md](docs/LANDSCAPE.md) | how Mac/iOS developers and coding agents usually sandbox, and IDE extension risks |
 | [BROKERING.md](docs/BROKERING.md) | keeping the model-provider token out of the VM |
 | [BROKERING-SPIKE.md](docs/BROKERING-SPIKE.md) | the test plan for that, when you want to try it |
+| [CREDENTIAL-CATEGORIES.md](docs/CREDENTIAL-CATEGORIES.md) | credential types beyond SSH and the model token, and which brokering covers each |
 | [ROADMAP.md](docs/ROADMAP.md) | Linux guests, and the three unimplemented gaps |
 
 ## Audit
