@@ -8,7 +8,9 @@ pi-roost compares. For the head-to-head with Docker Sandboxes, see
 
 These notes are from general knowledge and were not re-verified against
 current vendor documentation while writing. Check specifics before relying on
-them, especially anything about Apple's deprecations or agent-tool defaults.
+them, especially anything about agent-tool defaults. The exception is the
+`sandbox-exec` deprecation, which is sourced
+[below](#the-sandbox-exec-deprecation).
 
 ## Apple platform sandboxing
 
@@ -24,7 +26,8 @@ them, especially anything about Apple's deprecations or agent-tool defaults.
 - **XPC helper services.** The common pattern is to keep the main app lightly
   sandboxed and move risky work, such as parsing untrusted files, into separate
   sandboxed helpers. Safari and Chromium use this design.
-- **`sandbox-exec` with custom SBPL profiles.** Apple has deprecated it, but it
+- **`sandbox-exec` with custom SBPL profiles.** Apple has deprecated it (see
+  [below](#the-sandbox-exec-deprecation)), but it
   is still widely used for build tools, test runners, and CI jobs. Tools such as
   Nix and Bazel use it on macOS.
 - **VMs and containers.** Virtualization.framework-based tools (Tart, UTM,
@@ -36,7 +39,8 @@ them, especially anything about Apple's deprecations or agent-tool defaults.
 - **Seatbelt via `sandbox-exec`.** The most common lightweight option on macOS.
   Claude Code's sandbox mode and OpenAI's Codex CLI both use it to limit file
   writes to the project and restrict network access. It has no VM overhead, but
-  profiles are fiddly and the underlying tool is deprecated.
+  profiles are fiddly and the underlying tool is deprecated, with no removal
+  date — see [below](#the-sandbox-exec-deprecation).
 - **VMs and containers.** Used when agents run arbitrary commands, install
   packages, or work long-term. Stronger isolation and easy reset.
 - **Git worktrees or throwaway copies.** The agent works on its own checkout or
@@ -121,8 +125,64 @@ For pi-roost, cplt supports Pi and could run inside the VM as a second layer.
 It would also address the missing egress policy noted in
 [COMPARISON.md](COMPARISON.md).
 
+## The `sandbox-exec` deprecation
+
+The per-process agent sandboxes on macOS (cplt, Claude Code's sandbox, Codex
+CLI) are built on an interface Apple has deprecated. Checked on 15 November
+2026.
+
+What is and is not deprecated:
+
+- **Deprecated:** the `sandbox-exec` command and the C API in `sandbox.h`
+  (`sandbox_init` and its named profiles).
+- **Never supported:** the profile language, SBPL. Apple does not treat it as
+  API.
+- **Not deprecated:** the kernel sandbox underneath. App Sandbox runs on the
+  same implementation.
+- **Not involved:** IDE extensions, which run unsandboxed.
+
+Sources:
+
+- **`man sandbox-exec`** on macOS 26.6.2: *"The sandbox-exec command is
+  DEPRECATED. Developers who wish to sandbox an app should instead adopt the
+  App Sandbox feature described in the App Sandbox Design Guide."* The page is
+  dated March 9, 2017.
+- **`sandbox.h`** in the macOS 26.5 SDK: *"This header is deprecated and may be
+  removed in a future release."* Each function carries
+  `API_DEPRECATED("No longer supported", macos(10.5, 10.8))`, so the API has
+  been deprecated since macOS 10.8.
+- **Apple Developer Technical Support (DTS)**, forum thread
+  [777509](https://developer.apple.com/forums/thread/777509), March 2025:
+  *"What you're doing here is unsupported. While there is a public API for
+  setting up a custom sandbox, albeit a deprecated one, the sandbox programming
+  language (SBPL) has never been documented for third-party use, and thus is
+  not considered API."*
+
+Timeline:
+
+- **No removal date.** Apple's only wording is "may be removed in a future
+  release". The command is present and runs on macOS 26.6.2.
+- **A replacement exists, with a restriction.** In the same thread, September
+  2026, DTS says macOS 27 introduced `es_new_descendants_client` in Endpoint
+  Security for sandboxing child processes. It needs the privileged Endpoint
+  Security entitlement. DTS mentions a request to relax that and adds *"I
+  can't make any promises."* Not checked here; this kit's test VM runs
+  macOS 26.
+- **Supported options today**, per DTS in October 2026: *"ES, App Sandbox, and
+  Virtualization."*
+- **No answer on timing.** An open issue asking Apple for a timeline,
+  [apple/containerization#737](https://github.com/apple/containerization/issues/737),
+  has no reply from Apple.
+
+What that means in practice: the risk is not a known end date but an
+unsupported interface. DTS notes that platform engineers "regularly have to
+make hard choices between improving the implementation and breaking
+third-party products", so a profile can break on any macOS update.
+
 ## Where pi-roost fits
 
+- The VM is built on Virtualization, which is one of the three options Apple
+  DTS lists as supported. It does not depend on `sandbox-exec`.
 - The VM is the trust boundary, as in the Mac and agent VM approaches above.
 - Credentials stay on the host and are only forwarded during an explicit
   `-git` session, which addresses the "credentials in reach" risk.
