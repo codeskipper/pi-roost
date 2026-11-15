@@ -83,9 +83,25 @@ Install Homebrew with the `Homebrew.pkg` installer from
 **2. Tart and the GitHub CLI.**
 
 ```bash
+brew tap openai/tools
+brew trust --formula openai/tools/softnet
 brew install openai/tools/tart gh
 gh auth login
 ```
+
+Homebrew 6 and later load a formula from a non-official tap only if it is
+trusted. Naming `openai/tools/tart` in the install command trusts that formula,
+but not `softnet`, which it depends on and which comes from the same tap. The
+`brew trust` line covers it. Trusting the one formula is narrower than
+`brew trust openai/tools`, which accepts everything the tap publishes now and
+later.
+
+**If Homebrew is managed by Workbrew,** `brew` runs as a `workbrew` service
+account and the Mac has one trust store shared by all its users. `brew trust`
+is then limited to administrators, and there is no `~/.homebrew` folder in
+your home. Run the trust command from an administrator account, or have the
+tap added to an Allowed Taps policy in Workbrew, which trusts it as well. See
+[How Workbrew handles Homebrew Tap trust](https://workbrew.com/docs/how-workbrew-handles-homebrew-tap-trust).
 
 `gh` is not one of the kit's requirements, but the spike uses it on the host
 to create the test repositories and register the deploy keys.

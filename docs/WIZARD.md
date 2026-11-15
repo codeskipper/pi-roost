@@ -43,6 +43,13 @@ install it, and stops. It does not install either itself.
 | Command Line Tools | `xcode-select --install` |
 | Homebrew | the `Homebrew.pkg` installer from <https://github.com/Homebrew/brew/releases/latest> |
 
+Homebrew may be managed, for example by Workbrew. There `brew` runs as a
+service account, tap trust is shared by the whole Mac, and only administrators
+can change it. A standard user may be unable to trust the tap that Tart comes
+from, or to install Node system-wide. The launcher has to detect a managed
+Homebrew and say what an administrator needs to do, not fail on a permission
+error. Found while preparing a test Mac; the detection is not designed yet.
+
 ### Finding or installing Node
 
 1. **Look for Node.** On the `PATH`, or installed globally. It counts as found
