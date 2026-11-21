@@ -83,9 +83,10 @@ other options are in [GITHUB-ACCESS-SCOPE.md](GITHUB-ACCESS-SCOPE.md).
 ### Decision: Secretive first
 
 Deploy keys live in [Secretive](https://github.com/maxgoedjen/secretive), in
-the Secure Enclave. The session forwards Secretive's socket. 1Password stays as
-the agent for logging in to the VM, so the personal key is never on the
-forwarded socket.
+the Secure Enclave. The session forwards Secretive's socket. Logging in to the
+VM uses a different agent and a key of its own, so neither the login key nor a
+personal GitHub key is on the forwarded socket. See
+[A separate key for logging in](#a-separate-key-for-logging-in).
 
 Why this route first:
 
@@ -145,6 +146,63 @@ Keeping prompts down:
 - **Branch protection** carries the weight for `main`, so the push prompt does
   not have to.
 
+### A separate key for logging in
+
+**Decided, not built or tested.** Logging in to the VM uses a key made for
+that purpose. It is not registered on GitHub or anywhere else.
+
+The problem it solves: `setup.sh` installs every key the login agent holds
+into the VM's `authorized_keys`. On a host where that agent holds a personal
+GitHub key, the same key opens the VM and reaches GitHub. Seen on the everyday
+host: 1Password asks for the GitHub key on each connection to the VM.
+
+- The operator cannot tell a VM login from a GitHub operation in the prompt,
+  and can approve git access by mistake.
+- The kit's `-git` alias forwards the login agent, so the personal key is in
+  reach of the VM for that session.
+
+The design uses two kinds of key, on two agents:
+
+| Key | Opens | Held in | Forwarded to the VM |
+|---|---|---|---|
+| Login key | the VM only | the login agent | never |
+| Deploy keys | one repository each | the git agent | yes |
+
+The operator chooses both agents in the wizard:
+
+- **Git agent:** Secretive is the recommended choice and the one tested. The
+  other choice is the per-session agent in [Alternatives](#alternatives),
+  which is not designed in detail.
+- **Login agent:** 1Password, or the plain `ssh-agent` with a key file, as
+  used on the test Mac. Not Secretive when Secretive is the git agent, because
+  the login key would then be on the forwarded socket.
+
+A personal GitHub key is not part of this design. It stays wherever the
+operator keeps it, for their own use on the host, and the wizard does not move
+it. It must not be in the git agent.
+
+What the wizard does:
+
+1. Creates the login key in the chosen agent, named for the VM, for example
+   `pi-roost login <vm-name>`.
+2. Installs only that public key in the VM's `authorized_keys`, and removes
+   any other key found there after asking.
+3. Pins the VM's SSH alias to that key, with `IdentityFile` pointing at its
+   public key and `IdentitiesOnly yes`, so the agent is asked for that key and
+   no other.
+4. Replaces the `-git` alias. The forwarded agent becomes the git agent's
+   socket, never the login agent.
+
+To confirm before building:
+
+- With 1Password, that pinning the alias makes the prompt name the login key
+  and not the GitHub key.
+- With 1Password, whether approving the login key also covers other keys for
+  that terminal session.
+- Whether the 1Password CLI can create the key, or the operator creates it in
+  the app.
+- That `setup.sh` can install one named key. Today it installs all of them.
+
 ### Known limits of this route
 
 - **Notify keys are open to every session.** Any session can read any
@@ -180,7 +238,10 @@ If these are not acceptable, the stricter design is in
 1. **Check prerequisites.** The launcher has already checked the Command Line
    Tools, Homebrew and Node. Here: Secretive installed and its agent running,
    `gh` signed in on the host, the VM reachable. Also: the login agent is not
-   Secretive, and Secretive holds no keys other than pi-roost's deploy keys.
+   Secretive, Secretive holds no keys other than pi-roost's deploy keys, and
+   the VM's login key is not registered on GitHub. If the VM is opened by a
+   GitHub key, set up [a separate login key](#a-separate-key-for-logging-in)
+   first.
 2. **Pick repositories.** A searchable list from `gh`. Each repository cycles
    through none, read and write. Public repositories offer none and write only.
    A repository can be marked sensitive. Repositories without admin rights are
@@ -199,8 +260,8 @@ If these are not acceptable, the stricter design is in
    `gh repo deploy-key add`, with write allowed only on write keys.
 6. **Write guest routing.** Public keys, one host alias per key, and the fetch
    and push URL rewrites. These are routing, not a security boundary.
-7. **Launch.** Connect with the login agent set to 1Password and the forwarded
-   agent set to Secretive's socket.
+7. **Launch.** Connect with the login agent and its dedicated login key, and
+   the forwarded agent set to Secretive's socket.
 8. **Verify.** In the session: only deploy keys are listed; a chosen private
    repository can be fetched; a push to a read-only repository is refused; a
    push to a protected branch is refused.
@@ -210,6 +271,9 @@ Secretive. Deploy keys do not expire.
 
 ### To do
 
+- [ ] Confirm the four open points for
+  [a separate login key](#a-separate-key-for-logging-in), then move the
+  everyday host's VM off the personal GitHub key.
 - [ ] Decide the default gate for private reads, notification only or Touch
   ID, after initial testing. See
   [the balance](#the-balance-notify-for-routine-touch-id-for-significant).
