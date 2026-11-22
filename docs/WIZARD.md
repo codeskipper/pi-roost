@@ -254,8 +254,9 @@ If these are not acceptable, the stricter design is in
    the destination, so the name carries it. There is no way to create a key
    outside the app, so the wizard tells the user what to create, including
    the three settings under Advanced (protection level, `ecdsa-256`, and the
-   attribution), waits, and
-   picks up the new public key file.
+   attribution), waits, and picks up the new key by comparing the agent's key
+   list before and after. An edit to a secret does not reach the agent in
+   4.0.0, so the settings have to be right at creation.
 5. **Register keys.** Add each public key to its repository with
    `gh repo deploy-key add`, with write allowed only on write keys.
 6. **Write guest routing.** Public keys, one host alias per key, and the fetch
@@ -350,9 +351,12 @@ switch, so read notifications cannot be quietened on their own.
 
 What the run adds to the design:
 
-- **The wizard can match keys to secrets by name,** from the key comment. It
-  cannot check that a write key requires authentication, so it has to tell the
-  user which level to choose and trust the answer.
+- **The key comment shows the secret's name,** which is useful for display.
+  It is not a safe way to find a key: it changes with the attribution, and an
+  edit does not reach the agent in 4.0.0. See
+  [Upstream to watch](#upstream-to-watch).
+- **The wizard cannot check that a write key requires authentication,** so it
+  has to tell the user which level to choose and trust the answer.
 - **A slow approval fails the git command.** GitHub closes the connection
   while the prompt waits. An agent that retries raises another prompt.
 - **An unlock removes the gate for that key.** During the window, any process
@@ -361,8 +365,8 @@ What the run adds to the design:
 - **The key comment carries the Mac's hostname** into the VM, unless a Key
   Attribution is set. A custom attribution replaces the whole comment, name
   included. The wizard should ask for the attribution to be the secret's name,
-  with dashes for spaces. That keeps a label to match keys by and leaves the
-  hostname out.
+  with dashes for spaces. That keeps a readable label and leaves the hostname
+  out. A space typed in the attribution is kept as a space.
 - **The default protection level is Notify.** Level, key type and attribution
   are under Advanced in the creation window, with defaults of Notify,
   `ecdsa-256` and no attribution. A write key created without opening Advanced
@@ -380,28 +384,44 @@ What the run adds to the design:
 
 ### Upstream to watch
 
-Open items in Secretive's repository that would change this design. Read on
-15 November 2026. None is merged, and none has a review or a reply from the
-maintainer, whose one comment on a command-line tool is from March 2023: *"You
-could plausibly expose API to create new keys."*
+Items in Secretive's repository that bear on this design. Read on 15, 21 and
+22 November 2026. The maintainer's one comment on a command-line tool is from
+March 2023: *"You could plausibly expose API to create new keys."*
 
-| Item | What it would add | Effect here |
+| Item | State | Effect here |
 |---|---|---|
-| [Issue #328](https://github.com/maxgoedjen/secretive/issues/328), open since January 2022 | the request for a command-line interface | none until something is merged |
-| [PR #797](https://github.com/maxgoedjen/secretive/pull/797), open since April 2026 | commands on the app's binary, including `create-secret` with name, protection level, key type and attribution | helps: the wizard could create each key itself and would know its protection level |
-| [PR #862](https://github.com/maxgoedjen/secretive/pull/862), open since 7 November 2026 | a separate `secretive` tool, with create, rename and delete operations added to the agent's socket | a concern, below |
-| [Issue #854](https://github.com/maxgoedjen/secretive/issues/854), open since October 2026 | the requesting command and folder shown in the approval prompt | helps: the prompt would say more about what is asking |
+| [Issue #328](https://github.com/maxgoedjen/secretive/issues/328), a command-line interface | open since January 2022 | none until something is merged |
+| [Issue #854](https://github.com/maxgoedjen/secretive/issues/854), the requesting command and folder in the approval prompt | open since October 2026 | would help: the prompt would say more about what is asking |
+| [Issue #789](https://github.com/maxgoedjen/secretive/issues/789), edits to a secret not taking effect | open; fixed on `main` by [PR #834](https://github.com/maxgoedjen/secretive/pull/834) on 18 November 2026, not yet released | affects 4.0.0, below |
+| [PR #797](https://github.com/maxgoedjen/secretive/pull/797), `create-secret` and other commands on the app's binary | closed unmerged, 18 November 2026 | none |
+| [PR #862](https://github.com/maxgoedjen/secretive/pull/862), a `secretive` tool with key management on the agent's socket | closed unmerged, 18 November 2026 | none; a lesson, below |
 
-**The concern with PR #862.** It puts key management on the agent's socket,
-which is the socket this design forwards to the VM. Its description says it
-restricts changes to callers running as the same user. A forwarded request
-reaches the socket through the user's own `ssh` process, so it would likely
-pass. A process in the VM could then rename a key, and this design relies on
-the name shown in the Touch ID prompt. This is from the pull request's
-description only; the code was not read. If it is merged, check this before
-moving to that release.
+Both pull requests were closed as appearing to be AI-generated. Secretive's
+contributing guide says code generated with AI tools is not accepted, so no
+command-line tool is coming from either. Keys are created by hand in the app.
 
-Until one of these lands, keys are created by hand in the app.
+**Edits do not reach the agent in 4.0.0.** After a secret's name or
+attribution is edited in the app, the change is stored, but SecretAgent goes
+on serving the old key comment until it is restarted. Seen on the everyday
+host on 22 November 2026: a corrected attribution did not show in
+`ssh-add -L`. A comment on issue #789 gives the cause: the store compares
+secrets by ID only, so an edit does not count as a change and the agent is
+not told to reload. For this design:
+
+- The attribution has to be right when the key is created.
+- The wizard should not find a new key by its comment. It compares the
+  agent's key list before and after the user creates the key, and takes the
+  one that appeared.
+
+**The lesson from PR #862.** It put key management on the agent's socket,
+which is the socket this design forwards to the VM. Its code was read on 21
+November 2026, and not run. Creating and renaming a key were guarded only by
+comparing the caller's user ID with the agent's, with no authentication. A
+forwarded request reaches the socket through the user's own `ssh` process, so
+it would pass. A process in the VM could have renamed a key, and this design
+relies on the name shown in the Touch ID prompt. Any future release that adds
+management operations to the agent's socket needs this check before its
+socket is forwarded.
 
 ### Alternatives
 
@@ -420,11 +440,13 @@ Until one of these lands, keys are created by hand in the app.
 - Secretive's source, main branch at commit `164aacc` (18 October 2026):
   `AuthenticationHandler.swift`, `Notifier.swift`, `CreationOptions.swift`,
   `SigningRequestProvenance.swift`, `URLs.swift` and the localised strings.
-- Secretive issues [#328](https://github.com/maxgoedjen/secretive/issues/328)
-  and [#854](https://github.com/maxgoedjen/secretive/issues/854), and pull
-  requests [#797](https://github.com/maxgoedjen/secretive/pull/797) and
+- Secretive issues [#328](https://github.com/maxgoedjen/secretive/issues/328),
+  [#789](https://github.com/maxgoedjen/secretive/issues/789) and
+  [#854](https://github.com/maxgoedjen/secretive/issues/854), and pull requests
+  [#797](https://github.com/maxgoedjen/secretive/pull/797),
+  [#834](https://github.com/maxgoedjen/secretive/pull/834) and
   [#862](https://github.com/maxgoedjen/secretive/pull/862): descriptions and
-  comments, for the upstream items.
+  comments, and the agent code on #862's branch, for the upstream items.
 - Secretive [README](https://github.com/maxgoedjen/secretive) and
   [FAQ](https://github.com/maxgoedjen/secretive/blob/main/FAQ.md): Secure
   Enclave storage, Touch ID, notifications, agent forwarding, public key files,
