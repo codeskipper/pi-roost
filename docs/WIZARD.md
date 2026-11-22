@@ -383,8 +383,21 @@ repository with write access, from the launcher to the check inside the VM.
 - The key was registered, the routing was written, and the VM saw the keys
   through the forwarded socket. The files in the VM were inspected afterwards
   and match what the unit test expects.
-- Not yet covered on a host: a private repository with a read key, a write
-  key left at Notify, the write-key test at the end, and a resumed run.
+- The write-key test at the end passed: GitHub recognised the key after
+  Touch ID.
+
+Second run, the same day: a private repository with read access.
+
+- The read key was created at Notify, registered read-only, and the check
+  inside the VM read the repository. Secretive showed a notification and no
+  Touch ID prompt.
+- Checked afterwards from a session in the VM: the SSH and HTTPS addresses
+  ending in `.git` both resolve to the read key, the address without `.git`
+  is left alone, and a real `git ls-remote` of the HTTPS address returned the
+  repository's head.
+
+Not yet covered on a host: a private repository with read and write, a write
+key left at Notify, and a resumed run.
 
 Changed after that run: the deploy key's title on GitHub, which read "pi-roost
 pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
@@ -393,8 +406,9 @@ pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
 ### To do
 
 - [ ] Run the first slice on the everyday host and record what needs changing.
-  One run done on 22 November 2026. Still to cover: a private repository, a
-  write key at Notify, and a resumed run.
+  Two runs done on 22 November 2026: a public repository with write, and a
+  private one with read. Still to cover: a private repository with read and
+  write, a write key at Notify, and a resumed run.
 - [ ] Confirm the four open points for
   [a separate login key](#a-separate-key-for-logging-in), then move the
   everyday host's VM off the personal GitHub key.
