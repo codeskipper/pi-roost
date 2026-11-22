@@ -4,7 +4,7 @@ A plan for a host-side provisioning and launch wizard with the look and feel
 of the pi coding agent. It guides the user to the best-fit options for
 provisioning and launching the pi VM, and lets them pick.
 
-**Status: a first slice of step 1 is built and has not yet run on a host.**
+**Status: a first slice of step 1 is built and has had one run on a host.**
 See [The first slice](#the-first-slice). The plan is worked out one feature at
 a time. Step 1 is designed below, and its route was confirmed by a spike on a
 test Mac on 15 November 2026. Later steps are listed but not designed.
@@ -345,6 +345,10 @@ Limits of this slice:
 - **Addresses must end in `.git`.** Git matches rewrite rules by prefix, so a
   rule without the suffix would also catch a repository whose name starts the
   same.
+- **A remote with its own push URL is not sent to the write key.** Git ignores
+  the push rewrite for such a remote. Remove the separate push URL with
+  `git config --unset remote.<name>.pushurl`. Found on the first host run: a
+  clone in the VM had one, set by hand earlier.
 - **It only adds.** Removing a repository or a key is done by hand: on GitHub,
   in Secretive, and in `state.json`.
 - **Your own repositories only.** Organisation repositories are not listed.
@@ -363,14 +367,34 @@ How it was tested, and what was not:
   stand-ins are not in the repository.
 - **The launcher's private Node install** was run in the VM: the download
   matched the pinned checksum and that Node ran the wizard's TypeScript.
-- **Not run on a host.** Nothing has been tested against Secretive, `gh` or
-  Touch ID, and the test signature after Deny is the least certain step: what
-  `ssh-keygen` reports when a request is denied is not known yet.
 - **Not tested on Node 22.** Only Node 24 was available.
+
+First run on a host, 22 November 2026, on the everyday host: a public
+repository with write access, from the launcher to the check inside the VM.
+
+- The launcher found no Node, installed the private copy and the packages,
+  and started the wizard.
+- The host checks, the repository list, key creation and the pick-up of the
+  new key all worked. The warnings for the two hand-made keys and for the
+  GitHub key that opens the VM appeared as intended.
+- **The test signature works.** After Deny, `ssh-keygen` reports *agent
+  refused operation*. The wizard now passes the check only on that message,
+  and treats any other failure as a check that did not finish.
+- The key was registered, the routing was written, and the VM saw the keys
+  through the forwarded socket. The files in the VM were inspected afterwards
+  and match what the unit test expects.
+- Not yet covered on a host: a private repository with a read key, a write
+  key left at Notify, the write-key test at the end, and a resumed run.
+
+Changed after that run: the deploy key's title on GitHub, which read "pi-roost
+pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
+<access>".
 
 ### To do
 
 - [ ] Run the first slice on the everyday host and record what needs changing.
+  One run done on 22 November 2026. Still to cover: a private repository, a
+  write key at Notify, and a resumed run.
 - [ ] Confirm the four open points for
   [a separate login key](#a-separate-key-for-logging-in), then move the
   everyday host's VM off the personal GitHub key.
@@ -383,9 +407,11 @@ How it was tested, and what was not:
   test Mac, 15 November 2026.
 - [x] Repeat phase 4 of the spike on the everyday host, with 1Password as the
   login agent. Passed on 15 November 2026.
-- [ ] Test whether the wizard can confirm a write key's protection level with
-  a test signature. See [Results of the spike](#results-of-the-spike). The
-  first slice does this; it has not been run on a host.
+- [x] Test whether the wizard can confirm a write key's protection level with
+  a test signature. It can, for a key that requires authentication: Deny gives
+  *agent refused operation*. Shown on the everyday host on 22 November 2026.
+  The other half, a key at Notify signing with no prompt, has only been run
+  against a stand-in.
 - [x] Fill the gaps in the spike results. Done on 15 November 2026.
 
 ### Spikes before building

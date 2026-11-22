@@ -252,10 +252,24 @@ async function checkAsksBeforeSigning(ui: Ui, repoName: string, key: PublicKey):
 	for (;;) {
 		const result = await ui.cancellableWork("Waiting for you to press Deny", (signal) => testSign(key, signal));
 		if (result === CANCELLED) return false;
-		if (!result.signed) {
+		if (result.refused) {
 			ui.good("The key did not sign without approval");
-			if (result.detail) ui.note(`  ssh-keygen: ${lastLine(result.detail)}`);
 			return true;
+		}
+		if (!result.signed) {
+			// Neither a signature nor a refusal: the check itself went wrong.
+			ui.warn("The check did not finish as expected.");
+			if (result.detail) ui.note(`  ssh-keygen: ${lastLine(result.detail)}`);
+			const next = await ui.select({
+				title: "What now?",
+				items: [
+					{ value: "retry", label: "Try the check again" },
+					{ value: "accept", label: "Use the key without this check" },
+				],
+			});
+			if (next === null) return false;
+			if (next === "accept") return true;
+			continue;
 		}
 		ui.warn("The key signed. Either it is at Notify, or the prompt was approved.");
 		const next = await ui.select({
@@ -344,7 +358,7 @@ async function createKey(ui: Ui, repoName: string, role: Role): Promise<PublicKe
 }
 
 async function registerKey(ui: Ui, alias: string, repoName: string, role: Role, key: PublicKey): Promise<boolean> {
-	const title = `pi-roost ${alias} ${role}`;
+	const title = `pi-roost wizard, VM ${alias}, ${role}`;
 	for (;;) {
 		const result = await ui.work(`Registering the ${role} key on ${repoName}`, () =>
 			addDeployKey(repoName, key, title, role === "write"),

@@ -57,6 +57,11 @@ export async function waitForNewKey(
 export interface SignTest {
 	/** True when the agent returned a signature. */
 	signed: boolean;
+	/**
+	 * True when the agent said no. This is what `ssh-keygen` reports after
+	 * Deny is pressed on Secretive's prompt: "agent refused operation".
+	 */
+	refused: boolean;
 	/** What `ssh-keygen` printed. */
 	detail: string;
 }
@@ -77,7 +82,9 @@ export async function testSign(key: PublicKey, signal?: AbortSignal): Promise<Si
 			env: { SSH_AUTH_SOCK: socketPath() },
 			signal,
 		});
-		return { signed: result.code === 0, detail: (result.stderr || result.stdout).trim() };
+		const detail = (result.stderr || result.stdout).trim();
+		const signed = result.code === 0;
+		return { signed, refused: !signed && detail.includes("agent refused operation"), detail };
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

@@ -121,6 +121,16 @@ test("the install script sets up a guest, and git routes each address to the rig
 	assert.equal(fetchUrl("git@github.com:owner/readonly.git"), "gh-read.owner.readonly:owner/readonly.git");
 	assert.equal(pushUrl("git@github.com:owner/readonly.git"), "gh-read.owner.readonly:owner/readonly.git");
 
+	// Known limit: git ignores pushInsteadOf for a remote that has its own
+	// push URL, and applies insteadOf to that URL. Such a push is not sent to
+	// the write key.
+	inHome(home, "git", ["-C", repo, "remote", "add", "split", "https://github.com/owner/private.git"]);
+	inHome(home, "git", ["-C", repo, "remote", "set-url", "--push", "split", "git@github.com:owner/private.git"]);
+	assert.equal(
+		inHome(home, "git", ["-C", repo, "remote", "get-url", "--push", "split"]),
+		"gh-read.owner.private:owner/private.git",
+	);
+
 	// A repository whose name merely starts the same is left alone.
 	assert.equal(fetchUrl("git@github.com:owner/private-other.git"), "git@github.com:owner/private-other.git");
 	assert.equal(fetchUrl("https://github.com/owner/public-other.git"), "https://github.com/owner/public-other.git");
