@@ -69,7 +69,7 @@ ssh my-vm-git      # agent forwarded, GitHub reachable for this session
 | [WORKFLOW.md](docs/WORKFLOW.md) | daily use, the two aliases, full setup steps |
 | [MIGRATION.md](docs/MIGRATION.md) | moving an existing VM to host-held credentials |
 | [GITHUB-ACCESS-SCOPE.md](docs/GITHUB-ACCESS-SCOPE.md) | options for restricting the agent to specific repositories and permissions |
-| [WIZARD.md](docs/WIZARD.md) | design plan for a provisioning and launch wizard, starting with per-repository deploy keys |
+| [WIZARD.md](docs/WIZARD.md) | the provisioning wizard (`host/wizard.sh`): design plan, and a first slice that sets up per-repository deploy keys |
 | [WIZARD-SPIKE.md](docs/WIZARD-SPIKE.md) | the host test plan for that design's open questions |
 | [PR-OPTIONS.md](docs/PR-OPTIONS.md) | whether to let the agent open pull requests, and the risks |
 | [APP-TOKEN.md](docs/APP-TOKEN.md) | design for a gated, short-lived PR token |

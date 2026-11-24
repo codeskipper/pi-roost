@@ -4,8 +4,9 @@ A plan for a host-side provisioning and launch wizard with the look and feel
 of the pi coding agent. It guides the user to the best-fit options for
 provisioning and launching the pi VM, and lets them pick.
 
-**Status: design, nothing built.** The plan is worked out one feature at a
-time. Step 1 is designed below, and its route was confirmed by a spike on a
+**Status: a first slice of step 1 is built and has had one run on a host.**
+See [The first slice](#the-first-slice). The plan is worked out one feature at
+a time. Step 1 is designed below, and its route was confirmed by a spike on a
 test Mac on 15 November 2026. Later steps are listed but not designed.
 
 The claims about Secretive come from its README, FAQ, issue tracker and
@@ -17,15 +18,23 @@ pages. The [spikes](#spikes-before-building) list the questions, and
 
 | Step | Feature | State |
 |---|---|---|
-| 1 | Limit GitHub access to chosen repositories with per-repository deploy keys | designed below |
+| 1 | Limit GitHub access to chosen repositories with per-repository deploy keys | designed below; [first slice](#the-first-slice) built |
 | later | VM creation and provisioning, model-token gateway, egress policy, per-task VMs | not designed |
 
 ## Runtime and launcher
 
 The wizard uses pi's own TUI library, `@earendil-works/pi-tui`, so the look is
 pi's and not an imitation. The library is an MIT-licensed Node package. Version
-1.5.2 needs Node 22.19 or later and has three direct dependencies, pinned to
-exact versions. The kit is bash-only today, so Node is new on the host.
+1.6.0 needs Node 22.19 or later and has three direct dependencies, pinned to
+exact versions. The kit was bash-only before the wizard, so Node is new on the
+host.
+
+The wizard is written in TypeScript, and Node runs the `.ts` files directly by
+stripping the type annotations. There is no build step. The type checker is a
+development tool only and is not installed on the host. TypeScript was chosen
+over JavaScript because the wizard cannot be run where it is developed: it
+needs the host's Secretive, `gh` and Touch ID, so a checker that finds
+mistakes without running the code shortens each round of testing.
 
 Node is optional. The wizard is a front end over the `host/*.sh` scripts, and
 an operator who does not want Node runs those scripts directly.
@@ -53,20 +62,24 @@ error. Found while preparing a test Mac; the detection is not designed yet.
 
 ### Finding or installing Node
 
-1. **Look for Node.** On the `PATH`, or installed globally. It counts as found
-   only if it is 22.19 or later. An older Node is treated as not found and is
-   left untouched.
+1. **Look for Node.** On the `PATH`, or installed globally, or a private copy
+   from an earlier run. It counts as found only if it is 22.19 or later and
+   can load one of the wizard's TypeScript files. An older Node is treated as
+   not found and is left untouched.
 2. **If found, use it.**
-3. **If not found, ask the operator** to choose:
+3. **If not found, ask the operator** to choose. Pressing Return takes the
+   first:
+   - **Private (the default):** a pinned Node in `~/.pi-roost`, not on the
+     `PATH`. The download is checked against a SHA-256 pinned in the launcher,
+     taken from nodejs.org's published checksums. Deleting the folder removes
+     it. It takes about 200 MB.
    - **System-wide:** `brew install node`.
-   - **Private:** a pinned Node in a folder pi-roost owns, not on the `PATH`.
-     The download is verified against its published checksum. Deleting the
-     folder removes it.
    - **Neither:** stop, and point to the `host/*.sh` scripts.
-4. **Remember the answer,** so the launcher does not ask on every run.
+4. **No answer is stored.** An installed Node is found on the next run, so the
+   launcher does not ask again.
 
-In every case the wizard's npm packages go in pi-roost's own folder, installed
-from a lockfile with install scripts disabled. Nothing is installed with
+In every case the wizard's npm packages go in the `wizard/` folder of the
+pi-roost checkout, installed from a lockfile with install scripts disabled. Nothing is installed with
 `npm install -g`. The operator's choice is only about where the runtime lives.
 The wizard needs no network access for its packages once they are installed.
 
@@ -270,8 +283,221 @@ If these are not acceptable, the stricter design is in
 The wizard also needs a way to list and remove keys, on GitHub and in
 Secretive. Deploy keys do not expire.
 
+### The first slice
+
+Built on 22 November 2026: `host/wizard.sh` and the `wizard/` folder. It gives
+one VM access to one repository, and can be run again to add another.
+
+Run it on the host, from the pi-roost checkout:
+
+```bash
+host/wizard.sh
+```
+
+What it does, in order:
+
+1. **Launcher:** checks for the Command Line Tools and Homebrew, finds or
+   installs Node, and installs the wizard's packages on the first run.
+2. **Checks the host:** Secretive's agent answers, `gh` is signed in, a VM
+   alias from `host/setup.sh` exists and answers, and the VM is not opened by
+   a key held in Secretive. It lists keys in Secretive made outside the
+   wizard, as a note: every key there is in reach of the VM. It warns about
+   keys it recorded that are gone from Secretive, and when the VM is opened by
+   a key that is also on the GitHub account.
+3. **Repository and access:** a list from `gh` that narrows as you type. A
+   private repository offers read, or read and write. A public one offers
+   write. For write, it warns when the default branch is not protected.
+4. **Keys:** the write key is settled before the read key. For each key, it
+   first offers the keys in Secretive that were made outside the wizard,
+   ranked by whether their label names the repository, so a key made by hand
+   can be taken over. When the write key was taken over, it can also serve
+   for reading, at the cost of Touch ID on every fetch. Otherwise it shows the
+   four values to enter in Secretive and
+   waits, with a menu that can open Secretive and copy the name and the key
+   attribution to the clipboard. The menu closes by itself when the new key
+   appears; the wizard finds it by comparing the agent's key list before and
+   after. For a write key it asks for a test signature and tells the user to
+   press Deny. A signature that comes back anyway means the key does not
+   require authentication, and the wizard refuses it. It also shows the name
+   the Touch ID prompt should carry and asks whether it matched, because the
+   agent exposes the attribution and not the name. For a key taken over, it
+   asks only whether the name clearly identifies the repository.
+5. **Registers** each key as a deploy key with `gh repo deploy-key add`,
+   unless it is on the repository already. A key there read-only, when write
+   was chosen, is replaced after asking.
+6. **Writes the routing in the VM,** over the non-forwarding alias.
+7. **Checks from inside the VM,** with Secretive's socket forwarded: the keys
+   are visible, the login key is not, and the read key can read. Testing the
+   write key is offered, since it needs Touch ID.
+8. **Finishes** by printing the command for a session with the deploy keys in
+   reach, and offers to open it.
+
+It can be interrupted. Each key is recorded as soon as it exists, so a second
+run carries on where the first stopped.
+
+What it leaves on the host, all in `~/.pi-roost`:
+
+- `state.json`: the repositories and public keys per VM. No secrets.
+- `node`: the private copy of Node, if that was chosen.
+
+What it writes in the VM:
+
+- `~/.ssh/pi-roost/`: one public key file and one `Host` block per key.
+- `~/.config/pi-roost/gitconfig`: URL rewrites, so the usual GitHub addresses
+  reach the right key. Fetches use the read key and pushes the write key. A
+  public repository is fetched over HTTPS with no key.
+- One `Include` line at the top of `~/.ssh/config`, one `include.path` entry
+  in the global git configuration, and GitHub's host key in `known_hosts` if
+  it is missing.
+
+Both generated files are rewritten from `state.json` on every run. They are
+routing, not a security boundary.
+
+Limits of this slice:
+
+- **Addresses must end in `.git`.** Git matches rewrite rules by prefix, so a
+  rule without the suffix would also catch a repository whose name starts the
+  same.
+- **A remote with its own push URL is not sent to the write key.** Git ignores
+  the push rewrite for such a remote. Remove the separate push URL with
+  `git config --unset remote.<name>.pushurl`. Found on the first host run: a
+  clone in the VM had one, set by hand earlier.
+- **It only adds.** Removing a repository or a key is done by hand: on GitHub,
+  in Secretive, and in `state.json`.
+- **Your own repositories only.** Organisation repositories are not listed.
+- **No separate login key,** and no handling for a managed Homebrew.
+- **It does not remove stale entries.** A recorded key deleted from Secretive
+  stays in `state.json` and in the VM's routing until its repository is picked
+  again, and its deploy key stays on GitHub until removed there.
+
+How it was tested, and what was not:
+
+- **Type-checked** with strict settings, and 16 unit tests pass. One of them
+  runs the generated install script against a scratch home folder and asks
+  real `git` where each address would go.
+- **Run end to end in the development VM** against stand-ins for `gh`, `ssh`,
+  `ssh-add`, `ssh-keygen` and `open`: the full path for a private repository,
+  a second run that resumes, a write key at Notify, Escape and Ctrl+C. The
+  stand-ins are not in the repository.
+- **The launcher's private Node install** was run in the VM: the download
+  matched the pinned checksum and that Node ran the wizard's TypeScript.
+- **Not tested on Node 22.** Only Node 24 was available.
+
+First run on a host, 22 November 2026, on the everyday host: a public
+repository with write access, from the launcher to the check inside the VM.
+
+- The launcher found no Node, installed the private copy and the packages,
+  and started the wizard.
+- The host checks, the repository list, key creation and the pick-up of the
+  new key all worked. The warnings for the two hand-made keys and for the
+  GitHub key that opens the VM appeared as intended.
+- **The test signature works.** After Deny, `ssh-keygen` reports *agent
+  refused operation*. The wizard now passes the check only on that message,
+  and treats any other failure as a check that did not finish.
+- The key was registered, the routing was written, and the VM saw the keys
+  through the forwarded socket. The files in the VM were inspected afterwards
+  and match what the unit test expects.
+- The write-key test at the end passed: GitHub recognised the key after
+  Touch ID.
+
+Second run, the same day: a private repository with read access.
+
+- The read key was created at Notify, registered read-only, and the check
+  inside the VM read the repository. Secretive showed a notification and no
+  Touch ID prompt.
+- Checked afterwards from a session in the VM: the SSH and HTTPS addresses
+  ending in `.git` both resolve to the read key, the address without `.git`
+  is left alone, and a real `git ls-remote` of the HTTPS address returned the
+  repository's head.
+
+Third run, the same day: the private repository again, now with read and
+write, and the write key left at Notify on purpose.
+
+- The wizard recognised the read key from the second run and went straight to
+  the write key. A run that resumes with an existing key therefore works.
+- **A write key at Notify is caught.** The key signed with no Touch ID prompt,
+  and the wizard refused it before registering anything.
+
+Fourth run: the write key recreated with Require Authentication.
+
+- The Touch ID prompt showed a wrong name: the intended name followed by the
+  attribution text three times. The key's attribution itself was correct, so
+  the extra text was in the Name field only. The likeliest cause is the
+  attribution being pasted into Name. The wizard could not see this, since the
+  agent exposes the attribution and not the name.
+- Two changes came out of it, both run against stand-ins only: the clipboard
+  menu, and the question after Deny about the name in the prompt.
+
+Changed after these runs:
+
+- **Taking over a key made by hand.** In the first run the wizard listed the
+  hand-made pi-roost key as "not set up by this wizard" and asked for a new
+  one. That key worked, but the wizard could not use it, so it was deleted and
+  replaced. The wizard now offers such keys before asking for a new one, runs
+  the same Deny check for a write key, and finds a key already registered on
+  GitHub instead of adding it twice. The message about these keys was
+  reworded, since it read like a fault.
+- **Stale keys are listed** at the start.
+
+Both were run against stand-ins only.
+
+Fifth run, the same day, with those changes: the private repository with read
+and write, completed.
+
+- The read key from the second run was reused. A new write key was created
+  with the clipboard menu, passed the Deny check and the name question, was
+  registered, and passed the write-key test at the end.
+- Checked afterwards from a session in the VM: the VM sees the new write key,
+  and for this repository a fetch address resolves to the read key and a push
+  to the write key.
+- The list of recorded keys that are gone from Secretive was not looked at.
+
+Sixth run, the same day: taking over the secretive-notes key, which was made
+by hand, for that private repository with read and write.
+
+- The wizard offered the key, but for the read key, since it asked for the
+  read key first. The key was taken as the read key, and the wizard then
+  asked for a new write key. After cancelling, the key was no longer offered,
+  because the wizard now counted it as its own. The question named the role,
+  but it was easy to miss.
+
+Changed after that run, and run against stand-ins only:
+
+- The write key is asked for first, and the question explains what each key
+  is for.
+- When choosing the write key, the repository's recorded read key is offered
+  too. That undoes the mix-up above on the next run.
+- When the write key was taken over, the read key can be the same key.
+- A read key that may ask for Touch ID is tested only after asking.
+
+Seventh run, the same day, with those changes: secretive-notes again, read and
+write.
+
+- The key recorded as the read key was offered for the write key, passed the
+  Deny check and the name question, and was found already registered on
+  GitHub. It was then chosen for reading too. Every step succeeded, and no
+  deploy key was added.
+- The session the wizard opened at the end was used to continue working in
+  the VM. From there, the VM saw the key, and fetch and push addresses for the
+  repository both resolved to it.
+- The VM's hand-made route for this repository was then removed. The notes
+  clone now uses the usual GitHub address and the wizard's routing. Nothing
+  made by hand is left in the VM's SSH configuration.
+
+The list of keys gone from Secretive appeared at the start of that run. Its
+entries were not all read. The one noticed was most likely the deleted write
+key for the public fork, `codeskipper/secretive`, which reads much like
+secretive-notes. The entries now read as "owner/name, write key".
+
+Changed after that run: the deploy key's title on GitHub, which read "pi-roost
+pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
+<access>".
+
 ### To do
 
+- [ ] Run the first slice on the everyday host and record what needs changing.
+  Seven runs done on 22 November 2026. Every path of the first slice has now
+  run on a host.
 - [ ] Confirm the four open points for
   [a separate login key](#a-separate-key-for-logging-in), then move the
   everyday host's VM off the personal GitHub key.
@@ -284,8 +510,10 @@ Secretive. Deploy keys do not expire.
   test Mac, 15 November 2026.
 - [x] Repeat phase 4 of the spike on the everyday host, with 1Password as the
   login agent. Passed on 15 November 2026.
-- [ ] Test whether the wizard can confirm a write key's protection level with
-  a test signature. See [Results of the spike](#results-of-the-spike).
+- [x] Test whether the wizard can confirm a write key's protection level with
+  a test signature. It can, for a key that requires authentication: Deny gives
+  *agent refused operation*, and a key at Notify signs with no prompt. Both
+  shown on the everyday host on 22 November 2026.
 - [x] Fill the gaps in the spike results. Done on 15 November 2026.
 
 ### Spikes before building
