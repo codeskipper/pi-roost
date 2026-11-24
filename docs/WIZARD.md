@@ -439,8 +439,19 @@ Changed after these runs:
 
 Both were run against stand-ins only.
 
-Not yet covered on a host: a complete run for a private repository with read
-and write, the clipboard menu and name check, and taking over a key.
+Fifth run, the same day, with those changes: the private repository with read
+and write, completed.
+
+- The read key from the second run was reused. A new write key was created
+  with the clipboard menu, passed the Deny check and the name question, was
+  registered, and passed the write-key test at the end.
+- Checked afterwards from a session in the VM: the VM sees the new write key,
+  and for this repository a fetch address resolves to the read key and a push
+  to the write key.
+- The list of recorded keys that are gone from Secretive was not looked at.
+
+Not yet covered on a host: the list of keys gone from Secretive, and taking
+over a key made outside the wizard.
 
 Changed after that run: the deploy key's title on GitHub, which read "pi-roost
 pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
@@ -449,9 +460,8 @@ pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
 ### To do
 
 - [ ] Run the first slice on the everyday host and record what needs changing.
-  Four runs done on 22 November 2026. Still to cover: a complete run for a
-  private repository with read and write, with the clipboard menu and the
-  name question, and taking over the secretive-notes key.
+  Five runs done on 22 November 2026. Still to cover: the list of keys gone
+  from Secretive, and taking over the secretive-notes key.
 - [ ] Confirm the four open points for
   [a separate login key](#a-separate-key-for-logging-in), then move the
   everyday host's VM off the personal GitHub key.
