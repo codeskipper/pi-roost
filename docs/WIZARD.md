@@ -488,8 +488,10 @@ write.
   made by hand is left in the VM's SSH configuration.
 
 The list of keys gone from Secretive appeared at the start of that run.
-Removing them was added afterwards, on a branch of its own, and has been run
-against stand-ins only. Its
+Removing them was added afterwards, on a branch of its own, and run on the
+everyday host the same day: the deploy key for the fork was removed from
+GitHub, and the VM's routing for it was gone afterwards. The question was
+found confusing at first, with "Leave them for now" as the default. Its
 entries were not all read. The one noticed was most likely the deleted write
 key for the public fork, `codeskipper/secretive`, which reads much like
 secretive-notes. The entries now read as "owner/name, write key".
