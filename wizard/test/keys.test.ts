@@ -12,6 +12,7 @@ import {
 	parseKeyList,
 	protectionFor,
 	pubFileName,
+	rankCandidates,
 	rolesFor,
 	secretName,
 	splitRepo,
@@ -91,4 +92,19 @@ test("rolesFor and protectionFor", () => {
 	assert.deepEqual(rolesFor(false, "read"), []);
 	assert.equal(protectionFor("read"), "Notify");
 	assert.equal(protectionFor("write"), "Require Authentication");
+});
+
+test("rankCandidates puts keys that name the repository first, and keeps the rest", () => {
+	const keys = parseKeyList(
+		[
+			"ecdsa-sha2-nistp256 AAAA1 github.com-owner/other-write",
+			"ecdsa-sha2-nistp256 AAAA2 github.com-Owner/Repo-write",
+			"ecdsa-sha2-nistp256 AAAA3",
+			"ecdsa-sha2-nistp256 AAAA4 owner/repo read",
+		].join("\n"),
+	);
+	assert.deepEqual(
+		rankCandidates(keys, "owner/repo").map((key) => key.blob),
+		["AAAA2", "AAAA4", "AAAA1", "AAAA3"],
+	);
 });

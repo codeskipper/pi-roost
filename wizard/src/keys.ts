@@ -47,6 +47,16 @@ export function newKeys(before: readonly PublicKey[], after: readonly PublicKey[
 	return after.filter((key) => !known.has(key.blob));
 }
 
+/**
+ * Order keys so that those whose label mentions the repository come first.
+ * The label is only a hint; the user still chooses.
+ */
+export function rankCandidates(keys: readonly PublicKey[], repo: string): PublicKey[] {
+	const needle = repo.toLowerCase();
+	const mentions = (key: PublicKey) => key.comment.toLowerCase().includes(needle);
+	return [...keys.filter(mentions), ...keys.filter((key) => !mentions(key))];
+}
+
 /** The `SHA256:...` fingerprint that `ssh-add -l` and GitHub show. */
 export function fingerprint(key: PublicKey): string {
 	const digest = createHash("sha256").update(Buffer.from(key.blob, "base64")).digest("base64");

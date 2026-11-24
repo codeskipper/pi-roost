@@ -300,13 +300,17 @@ What it does, in order:
    installs Node, and installs the wizard's packages on the first run.
 2. **Checks the host:** Secretive's agent answers, `gh` is signed in, a VM
    alias from `host/setup.sh` exists and answers, and the VM is not opened by
-   a key held in Secretive. It warns about keys in Secretive that it did not
-   set up, and when the VM is opened by a key that is also on the GitHub
-   account.
+   a key held in Secretive. It lists keys in Secretive made outside the
+   wizard, as a note: every key there is in reach of the VM. It warns about
+   keys it recorded that are gone from Secretive, and when the VM is opened by
+   a key that is also on the GitHub account.
 3. **Repository and access:** a list from `gh` that narrows as you type. A
    private repository offers read, or read and write. A public one offers
    write. For write, it warns when the default branch is not protected.
-4. **Keys:** for each key, it shows the four values to enter in Secretive and
+4. **Keys:** for each key, it first offers the keys in Secretive that were
+   made outside the wizard, ranked by whether their label names the
+   repository, so a key made by hand can be taken over. Otherwise it shows the
+   four values to enter in Secretive and
    waits, with a menu that can open Secretive and copy the name and the key
    attribution to the clipboard. The menu closes by itself when the new key
    appears; the wizard finds it by comparing the agent's key list before and
@@ -314,8 +318,11 @@ What it does, in order:
    press Deny. A signature that comes back anyway means the key does not
    require authentication, and the wizard refuses it. It also shows the name
    the Touch ID prompt should carry and asks whether it matched, because the
-   agent exposes the attribution and not the name.
-5. **Registers** each key as a deploy key with `gh repo deploy-key add`.
+   agent exposes the attribution and not the name. For a key taken over, it
+   asks only whether the name clearly identifies the repository.
+5. **Registers** each key as a deploy key with `gh repo deploy-key add`,
+   unless it is on the repository already. A key there read-only, when write
+   was chosen, is replaced after asking.
 6. **Writes the routing in the VM,** over the non-forwarding alias.
 7. **Checks from inside the VM,** with Secretive's socket forwarded: the keys
    are visible, the login key is not, and the read key can read. Testing the
@@ -357,8 +364,9 @@ Limits of this slice:
   in Secretive, and in `state.json`.
 - **Your own repositories only.** Organisation repositories are not listed.
 - **No separate login key,** and no handling for a managed Homebrew.
-- **It does not adopt keys made by hand,** such as the ones already in use for
-  pi-roost and secretive-notes. It lists them as not set up by the wizard.
+- **It does not remove stale entries.** A recorded key deleted from Secretive
+  stays in `state.json` and in the VM's routing until its repository is picked
+  again, and its deploy key stays on GitHub until removed there.
 
 How it was tested, and what was not:
 
@@ -418,8 +426,21 @@ Fourth run: the write key recreated with Require Authentication.
 - Two changes came out of it, both run against stand-ins only: the clipboard
   menu, and the question after Deny about the name in the prompt.
 
+Changed after these runs:
+
+- **Taking over a key made by hand.** In the first run the wizard listed the
+  hand-made pi-roost key as "not set up by this wizard" and asked for a new
+  one. That key worked, but the wizard could not use it, so it was deleted and
+  replaced. The wizard now offers such keys before asking for a new one, runs
+  the same Deny check for a write key, and finds a key already registered on
+  GitHub instead of adding it twice. The message about these keys was
+  reworded, since it read like a fault.
+- **Stale keys are listed** at the start.
+
+Both were run against stand-ins only.
+
 Not yet covered on a host: a complete run for a private repository with read
-and write, and the two changes above.
+and write, the clipboard menu and name check, and taking over a key.
 
 Changed after that run: the deploy key's title on GitHub, which read "pi-roost
 pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
@@ -430,7 +451,7 @@ pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
 - [ ] Run the first slice on the everyday host and record what needs changing.
   Four runs done on 22 November 2026. Still to cover: a complete run for a
   private repository with read and write, with the clipboard menu and the
-  name question.
+  name question, and taking over the secretive-notes key.
 - [ ] Confirm the four open points for
   [a separate login key](#a-separate-key-for-logging-in), then move the
   everyday host's VM off the personal GitHub key.

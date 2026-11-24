@@ -86,6 +86,43 @@ export async function branchProtected(repo: string, branch: string, signal?: Abo
 	return Number(rules.stdout.trim()) > 0;
 }
 
+export interface DeployKey {
+	id: number;
+	/** Base64 key data, comparable with a PublicKey's blob. */
+	blob: string;
+	readOnly: boolean;
+	title: string;
+}
+
+/** The deploy keys on a repository, or null if they cannot be listed. */
+export async function listDeployKeys(repo: string, signal?: AbortSignal): Promise<DeployKey[] | null> {
+	const result = await run("gh", ["repo", "deploy-key", "list", "-R", repo, "--json", "id,key,readOnly,title"], {
+		signal,
+	});
+	if (result.code !== 0) return null;
+	try {
+		const listed = JSON.parse(result.stdout || "[]") as { id: number; key: string; readOnly: boolean; title: string }[];
+		return listed.map((entry) => ({
+			id: entry.id,
+			blob: parseKeyList(entry.key)[0]?.blob ?? "",
+			readOnly: entry.readOnly,
+			title: entry.title,
+		}));
+	} catch {
+		return null;
+	}
+}
+
+/** Remove a deploy key from a repository. */
+export async function deleteDeployKey(
+	repo: string,
+	id: number,
+	signal?: AbortSignal,
+): Promise<{ ok: boolean; detail: string }> {
+	const result = await run("gh", ["repo", "deploy-key", "delete", String(id), "-R", repo], { signal });
+	return { ok: result.code === 0, detail: (result.stderr || result.stdout).trim() };
+}
+
 /** Register a public key as a deploy key on one repository. */
 export async function addDeployKey(
 	repo: string,

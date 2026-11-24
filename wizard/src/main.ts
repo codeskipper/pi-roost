@@ -11,7 +11,16 @@
 
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
-import { accountKeyBlobs, addDeployKey, branchProtected, listRepos, login, type Repo } from "./github.ts";
+import {
+	accountKeyBlobs,
+	addDeployKey,
+	branchProtected,
+	deleteDeployKey,
+	listDeployKeys,
+	listRepos,
+	login,
+	type Repo,
+} from "./github.ts";
 import { INSTALLED_MARKER, installScript } from "./guest-config.ts";
 import {
 	type Access,
@@ -21,6 +30,7 @@ import {
 	parseKeyList,
 	protectionFor,
 	type PublicKey,
+	rankCandidates,
 	type Role,
 	ROLES,
 	rolesFor,
@@ -109,13 +119,15 @@ async function checkHost(ui: Ui, state: State): Promise<HostCheck> {
 	const known = knownBlobs(state);
 	const foreign = secretive.keys.filter((key) => !known.has(key.blob));
 	if (foreign.length > 0) {
-		ui.warn(
+		ui.note(
 			foreign.length === 1
-				? "One of them was not set up by this wizard:"
-				: `${foreign.length} of them were not set up by this wizard:`,
+				? "  One of them was made outside this wizard:"
+				: `  ${foreign.length} of them were made outside this wizard:`,
 		);
 		for (const key of foreign) ui.note(`    ${label(key)}`);
-		ui.note("  Every key in Secretive is in reach of the VM during a session.");
+		ui.note("  That is fine if you made them on purpose. When you pick a repository, the wizard");
+		ui.note("  offers such keys before asking for a new one. Every key in Secretive is in reach");
+		ui.note("  of the VM during a session.");
 	}
 
 	const user = await ui.work("Checking gh", () => login());
@@ -148,6 +160,21 @@ async function checkHost(ui: Ui, state: State): Promise<HostCheck> {
 		ui.note("  The wizard forwards Secretive's socket to the VM, so the login key would be in reach of it.");
 		ui.note("  Run host/setup.sh with --identity-agent set to another agent.");
 		stop();
+	}
+
+	const held = new Set(secretive.keys.map((key) => key.blob));
+	const gone: string[] = [];
+	for (const [repoName, entry] of Object.entries(vmRepos(state, alias))) {
+		for (const role of ROLES) {
+			const key = entry.keys[role];
+			if (key && !held.has(key.blob)) gone.push(`${repoName} ${role}`);
+		}
+	}
+	if (gone.length > 0) {
+		ui.warn("Keys recorded for this VM are no longer in Secretive:");
+		for (const name of gone) ui.note(`    ${name}`);
+		ui.note("  Pick the repository again to replace a key. Its old deploy key stays on GitHub");
+		ui.note("  until removed there.");
 	}
 
 	const vm = alias;
@@ -244,14 +271,24 @@ async function chooseRepo(ui: Ui, state: State, alias: string): Promise<{ repo: 
 /**
  * Confirm that a key asks before signing, by having the user refuse once.
  * Returns false when the user cancelled. Stops the wizard when the key
- * turns out to sign without asking.
+ * turns out to sign without asking, or carries the wrong name.
+ *
+ * A key the wizard asked for must carry the exact name it gave. A key made
+ * earlier, outside the wizard, only has to name the repository clearly.
  */
-async function checkAsksBeforeSigning(ui: Ui, repoName: string, key: PublicKey): Promise<boolean> {
+async function checkAsksBeforeSigning(ui: Ui, repoName: string, key: PublicKey, adopted: boolean): Promise<boolean> {
 	const name = secretName(repoName, "write");
+	const question = adopted
+		? `Did the prompt name a secret that is clearly for ${repoName}, with write access?`
+		: `Did the prompt name the secret exactly "${name}"?`;
 	ui.line("Checking that this key asks before it signs.");
 	ui.line(`A Touch ID prompt should appear. ${style.bold("Press Deny.")}`);
-	ui.line("Read the secret's name in the prompt first. It should be exactly:");
-	ui.line(`  ${style.bold(name)}`);
+	if (adopted) {
+		ui.line(`Read the secret's name in the prompt first. It should tell you it is for ${repoName}.`);
+	} else {
+		ui.line("Read the secret's name in the prompt first. It should be exactly:");
+		ui.line(`  ${style.bold(name)}`);
+	}
 	for (;;) {
 		const result = await ui.cancellableWork("Waiting for you to press Deny", (signal) => testSign(key, signal));
 		if (result === CANCELLED) return false;
@@ -259,9 +296,13 @@ async function checkAsksBeforeSigning(ui: Ui, repoName: string, key: PublicKey):
 			ui.good("The key did not sign without approval");
 			// The agent only exposes the attribution, so the name can be checked
 			// by eye alone. It is what every later prompt for this key shows.
-			if (!(await ui.confirm(`Did the prompt name the secret exactly "${name}"?`))) {
-				ui.bad("The secret's name is not the one asked for.");
-				ui.note("  Delete it in Secretive and run the wizard again. Nothing was registered on GitHub.");
+			if (!(await ui.confirm(question))) {
+				ui.bad(adopted ? "The secret's name does not identify the repository." : "The secret's name is not the one asked for.");
+				ui.note(
+					adopted
+						? "  Rename it in Secretive and restart SecretAgent, or create a new key. Nothing was registered."
+						: "  Delete it in Secretive and run the wizard again. Nothing was registered on GitHub.",
+				);
 				stop();
 			}
 			return true;
@@ -292,7 +333,11 @@ async function checkAsksBeforeSigning(ui: Ui, repoName: string, key: PublicKey):
 		if (next === null) return false;
 		if (next === "notify") {
 			ui.bad("This key signs without authentication, so it cannot be the write key.");
-			ui.note("  Delete it in Secretive and run the wizard again.");
+			ui.note(
+				adopted
+					? "  Choose another key, or create a new one, when you run the wizard again."
+					: "  Delete it in Secretive and run the wizard again.",
+			);
 			stop();
 		}
 	}
@@ -389,19 +434,87 @@ async function createKey(ui: Ui, repoName: string, role: Role): Promise<PublicKe
 	if (key.comment !== expected) {
 		ui.note(`  Its attribution is not "${expected}". That only changes the label.`);
 	}
+	return key;
+}
+
+/**
+ * Offer keys that are in Secretive but not recorded by the wizard, before
+ * asking for a new one. Resolves with the chosen key, "create", or null when
+ * the user cancelled.
+ */
+async function pickExistingKey(
+	ui: Ui,
+	state: State,
+	repoName: string,
+	role: Role,
+): Promise<PublicKey | "create" | null> {
+	const current = await listKeys();
+	if (!current.ok) return "create";
+	const known = knownBlobs(state);
+	const candidates = rankCandidates(
+		current.keys.filter((key) => !known.has(key.blob)),
+		repoName,
+	);
+	if (candidates.length === 0) return "create";
+	ui.heading(`The ${role} key`);
+	ui.line("Secretive holds keys made outside this wizard. One of them can be used, if it is meant for this.");
+	const choice = await ui.select({
+		title: `Which key should be the ${role} key for ${repoName}?`,
+		items: [
+			...candidates.map((key) => ({ value: key.blob, label: label(key), description: fingerprint(key) })),
+			{ value: "create", label: "Create a new key" },
+		],
+	});
+	if (choice === null) return null;
+	if (choice === "create") return "create";
+	const key = candidates.find((candidate) => candidate.blob === choice);
+	if (!key) return null;
+	ui.good(`Using an existing key: ${label(key)}`);
+	return key;
+}
+
+/**
+ * Checks a key before it is recorded: its type, and for a write key that it
+ * asks before signing. Returns false when the user cancelled.
+ */
+async function vetKey(ui: Ui, repoName: string, role: Role, key: PublicKey, adopted: boolean): Promise<boolean> {
 	if (key.type !== "ecdsa-sha2-nistp256") {
 		ui.warn(`Its type is ${key.type}. This wizard was tested with ecdsa-256 keys only.`);
 		if (!(await ui.confirm("Use this key anyway?"))) {
-			ui.note("Delete it in Secretive and run the wizard again.");
+			ui.note(adopted ? "Choose another key when you run the wizard again." : "Delete it in Secretive and run the wizard again.");
 			stop();
 		}
 	}
-	if (role === "write" && !(await checkAsksBeforeSigning(ui, repoName, key))) return null;
-	return key;
+	if (role === "write") return checkAsksBeforeSigning(ui, repoName, key, adopted);
+	if (adopted) ui.note("  If this key requires authentication, every read will ask for Touch ID.");
+	return true;
 }
 
 async function registerKey(ui: Ui, alias: string, repoName: string, role: Role, key: PublicKey): Promise<boolean> {
 	const title = `pi-roost wizard, VM ${alias}, ${role}`;
+	// A key made earlier, or a run that stopped after registering, may be on
+	// GitHub already. Adding it again would fail.
+	const existing = await ui.work(`Checking the deploy keys on ${repoName}`, () => listDeployKeys(repoName));
+	const match = existing?.find((deployKey) => deployKey.blob === key.blob);
+	if (match) {
+		if (role === "read" || !match.readOnly) {
+			ui.good(`Already registered on GitHub as "${match.title}", ${match.readOnly ? "read-only" : "with write access"}`);
+			if (role === "read" && !match.readOnly) {
+				ui.note("  It has write access there, more than reading needs. The wizard uses it for reading only.");
+			}
+			return true;
+		}
+		ui.warn(`This key is registered on ${repoName} as "${match.title}", read-only.`);
+		if (!(await ui.confirm("Replace that deploy key with one that has write access?", { no: "Stop" }))) {
+			return false;
+		}
+		const removed = await ui.work("Removing the read-only deploy key", () => deleteDeployKey(repoName, match.id));
+		if (!removed.ok) {
+			ui.bad("GitHub did not remove the deploy key.");
+			if (removed.detail) ui.note(`  ${firstLine(removed.detail)}`);
+			return false;
+		}
+	}
 	for (;;) {
 		const result = await ui.work(`Registering the ${role} key on ${repoName}`, () =>
 			addDeployKey(repoName, key, title, role === "write"),
@@ -442,9 +555,13 @@ async function ensureKeys(ui: Ui, state: State, alias: string, repo: Repo, acces
 			}
 		}
 		if (!key) {
-			const created = await createKey(ui, repo.name, role);
-			if (!created) cancelled(ui);
-			key = { ...created, fingerprint: fingerprint(created), registered: false };
+			const existing = await pickExistingKey(ui, state, repo.name, role);
+			if (existing === null) cancelled(ui);
+			const adopted = existing !== "create";
+			const chosen = adopted ? existing : await createKey(ui, repo.name, role);
+			if (!chosen) cancelled(ui);
+			if (!(await vetKey(ui, repo.name, role, chosen, adopted))) cancelled(ui);
+			key = { ...chosen, fingerprint: fingerprint(chosen), registered: false };
 			entry.keys[role] = key;
 			saveState(state);
 		}
