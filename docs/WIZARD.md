@@ -490,8 +490,11 @@ write.
 The list of keys gone from Secretive appeared at the start of that run.
 Removing them was added afterwards, on a branch of its own, and run on the
 everyday host the same day: the deploy key for the fork was removed from
-GitHub, and the VM's routing for it was gone afterwards. The question was
-found confusing at first, with "Leave them for now" as the default. Its
+GitHub, and the VM's routing for it was gone afterwards. The confusing part
+was the deploy key's title, "pi-roost pi-roost write": an early title format
+that names the VM, which is also called pi-roost, so it read as if it belonged
+to the pi-roost repository. The wizard's messages now lead with the repository
+and the key's role, and give the title only as an aside. Its
 entries were not all read. The one noticed was most likely the deleted write
 key for the public fork, `codeskipper/secretive`, which reads much like
 secretive-notes. The entries now read as "owner/name, write key".

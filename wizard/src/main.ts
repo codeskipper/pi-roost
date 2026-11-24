@@ -230,14 +230,17 @@ async function cleanUpStale(ui: Ui, state: State, alias: string, held: Set<strin
 		for (const { role, key } of stale.filter((entry) => entry.repo === repo)) {
 			const match = deployKeys.find((deployKey) => deployKey.blob === key.blob);
 			if (match && !removed.has(match.id)) {
-				const result = await ui.work(`Removing "${match.title}" from ${repo}`, () => deleteDeployKey(repo, match.id));
+				const result = await ui.work(`Removing the ${role} deploy key from ${repo}`, () =>
+					deleteDeployKey(repo, match.id),
+				);
 				if (!result.ok) {
-					ui.bad(`GitHub did not remove "${match.title}" from ${repo}. The entry is kept.`);
+					ui.bad(`GitHub did not remove the ${role} deploy key from ${repo}. The entry is kept.`);
 					if (result.detail) ui.note(`  ${firstLine(result.detail)}`);
 					continue;
 				}
 				removed.add(match.id);
-				ui.good(`Removed the deploy key "${match.title}" from ${repo}`);
+				ui.good(`Removed the ${role} deploy key from ${repo}`);
+				ui.note(`  Its title on GitHub was "${match.title}". A title is only a label.`);
 			} else if (!match) {
 				ui.note(`${repo}, ${role} key: not on GitHub any more`);
 			}
@@ -592,13 +595,14 @@ async function registerKey(ui: Ui, alias: string, repoName: string, role: Role, 
 	const match = existing?.find((deployKey) => deployKey.blob === key.blob);
 	if (match) {
 		if (role === "read" || !match.readOnly) {
-			ui.good(`Already registered on GitHub as "${match.title}", ${match.readOnly ? "read-only" : "with write access"}`);
+			ui.good(`Already a deploy key on ${repoName}, ${match.readOnly ? "read-only" : "with write access"}`);
+			ui.note(`  Its title on GitHub is "${match.title}".`);
 			if (role === "read" && !match.readOnly) {
 				ui.note("  It has write access there, more than reading needs. The wizard uses it for reading only.");
 			}
 			return true;
 		}
-		ui.warn(`This key is registered on ${repoName} as "${match.title}", read-only.`);
+		ui.warn(`This key is a read-only deploy key on ${repoName}, titled "${match.title}" there.`);
 		if (!(await ui.confirm("Replace that deploy key with one that has write access?", { no: "Stop" }))) {
 			return false;
 		}
@@ -614,7 +618,8 @@ async function registerKey(ui: Ui, alias: string, repoName: string, role: Role, 
 			addDeployKey(repoName, key, title, role === "write"),
 		);
 		if (result.ok) {
-			ui.good(`Registered on GitHub as "${title}", ${role === "write" ? "with write access" : "read-only"}`);
+			ui.good(`Added as a deploy key on ${repoName}, ${role === "write" ? "with write access" : "read-only"}`);
+			ui.note(`  Its title on GitHub is "${title}".`);
 			return true;
 		}
 		ui.bad("GitHub did not accept the key.");
