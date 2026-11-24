@@ -470,8 +470,21 @@ Changed after that run, and run against stand-ins only:
 - When the write key was taken over, the read key can be the same key.
 - A read key that may ask for Touch ID is tested only after asking.
 
-Not yet covered on a host: the list of keys gone from Secretive, and taking
-over a key with the changes above.
+Seventh run, the same day, with those changes: secretive-notes again, read and
+write.
+
+- The key recorded as the read key was offered for the write key, passed the
+  Deny check and the name question, and was found already registered on
+  GitHub. It was then chosen for reading too. Every step succeeded, and no
+  deploy key was added.
+- The session the wizard opened at the end was used to continue working in
+  the VM. From there, the VM saw the key, and fetch and push addresses for the
+  repository both resolved to it.
+- The VM's hand-made route for this repository was then removed. The notes
+  clone now uses the usual GitHub address and the wizard's routing. Nothing
+  made by hand is left in the VM's SSH configuration.
+
+Not yet covered on a host: the list of keys gone from Secretive.
 
 Changed after that run: the deploy key's title on GitHub, which read "pi-roost
 pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
@@ -480,8 +493,8 @@ pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
 ### To do
 
 - [ ] Run the first slice on the everyday host and record what needs changing.
-  Five runs done on 22 November 2026. Still to cover: the list of keys gone
-  from Secretive, and taking over the secretive-notes key.
+  Seven runs done on 22 November 2026. Still to cover: the list of keys gone
+  from Secretive.
 - [ ] Confirm the four open points for
   [a separate login key](#a-separate-key-for-logging-in), then move the
   everyday host's VM off the personal GitHub key.
