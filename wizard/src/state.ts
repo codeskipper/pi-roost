@@ -14,6 +14,8 @@ export interface StoredKey extends PublicKey {
 	fingerprint: string;
 	/** Whether it has been added to the repository as a deploy key. */
 	registered: boolean;
+	/** True for a key made outside the wizard and taken over. */
+	takenOver?: boolean;
 }
 
 export interface RepoEntry {

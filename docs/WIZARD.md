@@ -307,9 +307,11 @@ What it does, in order:
 3. **Repository and access:** a list from `gh` that narrows as you type. A
    private repository offers read, or read and write. A public one offers
    write. For write, it warns when the default branch is not protected.
-4. **Keys:** for each key, it first offers the keys in Secretive that were
-   made outside the wizard, ranked by whether their label names the
-   repository, so a key made by hand can be taken over. Otherwise it shows the
+4. **Keys:** the write key is settled before the read key. For each key, it
+   first offers the keys in Secretive that were made outside the wizard,
+   ranked by whether their label names the repository, so a key made by hand
+   can be taken over. When the write key was taken over, it can also serve
+   for reading, at the cost of Touch ID on every fetch. Otherwise it shows the
    four values to enter in Secretive and
    waits, with a menu that can open Secretive and copy the name and the key
    attribution to the clipboard. The menu closes by itself when the new key
@@ -450,8 +452,26 @@ and write, completed.
   to the write key.
 - The list of recorded keys that are gone from Secretive was not looked at.
 
+Sixth run, the same day: taking over the secretive-notes key, which was made
+by hand, for that private repository with read and write.
+
+- The wizard offered the key, but for the read key, since it asked for the
+  read key first. The key was taken as the read key, and the wizard then
+  asked for a new write key. After cancelling, the key was no longer offered,
+  because the wizard now counted it as its own. The question named the role,
+  but it was easy to miss.
+
+Changed after that run, and run against stand-ins only:
+
+- The write key is asked for first, and the question explains what each key
+  is for.
+- When choosing the write key, the repository's recorded read key is offered
+  too. That undoes the mix-up above on the next run.
+- When the write key was taken over, the read key can be the same key.
+- A read key that may ask for Touch ID is tested only after asking.
+
 Not yet covered on a host: the list of keys gone from Secretive, and taking
-over a key made outside the wizard.
+over a key with the changes above.
 
 Changed after that run: the deploy key's title on GitHub, which read "pi-roost
 pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,

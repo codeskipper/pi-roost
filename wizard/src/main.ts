@@ -437,39 +437,76 @@ async function createKey(ui: Ui, repoName: string, role: Role): Promise<PublicKe
 	return key;
 }
 
+/** The answer from pickExistingKey. */
+type KeyChoice = PublicKey | "create" | "same-as-write" | null;
+
+interface PickOptions {
+	/**
+	 * This repository's recorded read key, offered when choosing the write key.
+	 * It lets a key that was taken over as the read key by mistake become the
+	 * write key instead.
+	 */
+	ownReadKey?: PublicKey;
+	/** Offer the write key for reading too. Set when it was just taken over. */
+	writeKey?: PublicKey;
+}
+
 /**
  * Offer keys that are in Secretive but not recorded by the wizard, before
- * asking for a new one. Resolves with the chosen key, "create", or null when
- * the user cancelled.
+ * asking for a new one. Resolves with the chosen key, "create", "same-as-write"
+ * when the write key should be used for reading too, or null when the user
+ * cancelled.
  */
 async function pickExistingKey(
 	ui: Ui,
 	state: State,
 	repoName: string,
 	role: Role,
-): Promise<PublicKey | "create" | null> {
+	options: PickOptions = {},
+): Promise<KeyChoice> {
 	const current = await listKeys();
 	if (!current.ok) return "create";
+	const held = (key: PublicKey | undefined) => key !== undefined && current.keys.some((k) => k.blob === key.blob);
 	const known = knownBlobs(state);
 	const candidates = rankCandidates(
 		current.keys.filter((key) => !known.has(key.blob)),
 		repoName,
 	);
-	if (candidates.length === 0) return "create";
-	ui.heading(`The ${role} key`);
-	ui.line("Secretive holds keys made outside this wizard. One of them can be used, if it is meant for this.");
+	const ownRead = held(options.ownReadKey) ? options.ownReadKey : undefined;
+	const writeKey = held(options.writeKey) ? options.writeKey : undefined;
+	if (candidates.length === 0 && !ownRead && !writeKey) return "create";
+
+	ui.heading(`The ${role} key for ${repoName}`);
+	if (role === "write") {
+		ui.line("Pushes use this key, and each push asks for Touch ID.");
+	} else {
+		ui.line("Fetches use this key. A new read key only shows a notification, with no Touch ID.");
+	}
+	if (candidates.length > 0) {
+		ui.line("Secretive holds keys made outside this wizard. One of them can be used, if it is meant for this.");
+	}
+	const items = [];
+	if (writeKey) {
+		items.push({ value: "same-as-write", label: "Use the write key for reading too", description: "every fetch asks for Touch ID" });
+	}
+	if (ownRead) {
+		items.push({ value: ownRead.blob, label: label(ownRead), description: "recorded as this repository's read key" });
+	}
+	for (const key of candidates) items.push({ value: key.blob, label: label(key), description: fingerprint(key) });
+	items.push({
+		value: "create",
+		label: "Create a new key",
+		description: role === "read" ? "at Notify" : "at Require Authentication",
+	});
 	const choice = await ui.select({
 		title: `Which key should be the ${role} key for ${repoName}?`,
-		items: [
-			...candidates.map((key) => ({ value: key.blob, label: label(key), description: fingerprint(key) })),
-			{ value: "create", label: "Create a new key" },
-		],
+		items,
 	});
 	if (choice === null) return null;
-	if (choice === "create") return "create";
-	const key = candidates.find((candidate) => candidate.blob === choice);
+	if (choice === "create" || choice === "same-as-write") return choice;
+	const key = [...(ownRead ? [ownRead] : []), ...candidates].find((candidate) => candidate.blob === choice);
 	if (!key) return null;
-	ui.good(`Using an existing key: ${label(key)}`);
+	ui.good(`Using an existing key as the ${role} key: ${label(key)}`);
 	return key;
 }
 
@@ -540,7 +577,12 @@ async function ensureKeys(ui: Ui, state: State, alias: string, repo: Repo, acces
 			ui.note(`A ${role} key is already recorded for this repository. It is kept.`);
 		}
 	}
-	for (const role of roles) {
+	// The write key is settled first. A key taken over is most often one made
+	// for pushing, and asking about it first keeps it from being taken as the
+	// read key by mistake.
+	const order = [...roles].sort((a, b) => (a === b ? 0 : a === "write" ? -1 : 1));
+	let tookOverWriteKey = false;
+	for (const role of order) {
 		let key: StoredKey | undefined = entry.keys[role];
 		if (key) {
 			const recorded = key;
@@ -555,13 +597,27 @@ async function ensureKeys(ui: Ui, state: State, alias: string, repo: Repo, acces
 			}
 		}
 		if (!key) {
-			const existing = await pickExistingKey(ui, state, repo.name, role);
+			const existing = await pickExistingKey(ui, state, repo.name, role, {
+				ownReadKey: role === "write" ? entry.keys.read : undefined,
+				writeKey: role === "read" && tookOverWriteKey ? entry.keys.write : undefined,
+			});
 			if (existing === null) cancelled(ui);
+			if (existing === "same-as-write") {
+				const writeKey = entry.keys.write;
+				if (!writeKey) stop();
+				// The same deploy key serves both. It is registered already.
+				entry.keys.read = { ...writeKey };
+				saveState(state);
+				ui.good("Reading uses the write key. Every fetch asks for Touch ID.");
+				continue;
+			}
 			const adopted = existing !== "create";
+			if (role === "write" && adopted) tookOverWriteKey = true;
 			const chosen = adopted ? existing : await createKey(ui, repo.name, role);
 			if (!chosen) cancelled(ui);
 			if (!(await vetKey(ui, repo.name, role, chosen, adopted))) cancelled(ui);
 			key = { ...chosen, fingerprint: fingerprint(chosen), registered: false };
+			if (adopted) key.takenOver = true;
 			entry.keys[role] = key;
 			saveState(state);
 		}
@@ -610,13 +666,20 @@ async function verify(ui: Ui, alias: string, repo: Repo, entry: RepoEntry, login
 		ui.bad("The key that opens the VM is also visible inside it. It should not be.");
 	}
 
-	if (entry.keys.read) {
-		const fetched = await ui.work(`Reading ${repo.name} with the read key`, () =>
-			vmScript(alias, `git ls-remote https://github.com/${repo.name}.git HEAD\n`, { forwardSocket }),
+	const readKey = entry.keys.read;
+	// A read key that is also the write key, or one taken over, may need
+	// Touch ID, so testing it is offered instead of done.
+	const readMayAsk = readKey !== undefined && (readKey.blob === entry.keys.write?.blob || readKey.takenOver === true);
+	if (readKey && (!readMayAsk || (await ui.confirm("Test the read key now? It may need Touch ID.", { no: "Skip" })))) {
+		const command = `git ls-remote https://github.com/${repo.name}.git HEAD\n`;
+		const fetched = await ui.cancellableWork(`Reading ${repo.name} with the read key`, (signal) =>
+			vmScript(alias, command, { forwardSocket, signal }),
 		);
-		if (fetched.ok) {
-			ui.good("The read key works. Secretive shows a notification for it.");
-			ui.note(`  The notification should read "Using secret ${secretName(repo.name, "read")}".`);
+		if (fetched === CANCELLED) {
+			ui.note("Skipped.");
+		} else if (fetched.ok) {
+			ui.good("The read key works.");
+			if (!readMayAsk) ui.note(`  Secretive should show "Using secret ${secretName(repo.name, "read")}".`);
 		} else {
 			ui.bad("Reading with the read key failed.");
 			if (fetched.stderr) ui.note(`  ${firstLine(fetched.stderr)}`);
