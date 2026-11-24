@@ -38,6 +38,7 @@ import {
 } from "./keys.ts";
 import { copyToClipboard, listKeys, openApp, socketPath, testSign, waitForNewKey } from "./secretive.ts";
 import {
+	forgetKey,
 	knownBlobs,
 	loadState,
 	repoEntry,
@@ -45,6 +46,7 @@ import {
 	saveState,
 	type State,
 	type StoredKey,
+	staleKeys,
 	vmRepos,
 } from "./state.ts";
 import { CANCELLED, style, Ui } from "./ui.ts";
@@ -103,6 +105,8 @@ interface HostCheck {
 	alias: string;
 	/** The public keys that may log in to the VM. */
 	loginKeys: PublicKey[];
+	/** The blobs of the keys Secretive holds. */
+	held: Set<string>;
 }
 
 async function checkHost(ui: Ui, state: State): Promise<HostCheck> {
@@ -162,21 +166,6 @@ async function checkHost(ui: Ui, state: State): Promise<HostCheck> {
 		stop();
 	}
 
-	const held = new Set(secretive.keys.map((key) => key.blob));
-	const gone: string[] = [];
-	for (const [repoName, entry] of Object.entries(vmRepos(state, alias))) {
-		for (const role of ROLES) {
-			const key = entry.keys[role];
-			if (key && !held.has(key.blob)) gone.push(`${repoName}, ${role} key`);
-		}
-	}
-	if (gone.length > 0) {
-		ui.warn("Keys recorded for this VM are no longer in Secretive:");
-		for (const name of gone) ui.note(`    ${name}`);
-		ui.note("  Pick the repository again to replace a key. Its old deploy key stays on GitHub");
-		ui.note("  until removed there.");
-	}
-
 	const vm = alias;
 	const reach = await ui.work(`Connecting to ${vm}`, () => vmScript(vm, "echo pi-roost-ok\n"));
 	if (!reach.ok || !reach.stdout.includes("pi-roost-ok")) {
@@ -199,7 +188,75 @@ async function checkHost(ui: Ui, state: State): Promise<HostCheck> {
 		}
 	}
 
-	return { alias: vm, loginKeys: loginKeys ?? [] };
+	return { alias: vm, loginKeys: loginKeys ?? [], held: new Set(secretive.keys.map((key) => key.blob)) };
+}
+
+/**
+ * Offer to remove recorded keys that are gone from Secretive: their deploy
+ * keys on GitHub, their entries in the record, and their routing in the VM.
+ */
+async function cleanUpStale(ui: Ui, state: State, alias: string, held: Set<string>): Promise<void> {
+	const stale = staleKeys(state, alias, held);
+	if (stale.length === 0) return;
+	ui.heading("Keys that are gone");
+	ui.warn("Keys recorded for this VM are no longer in Secretive:");
+	for (const { repo, role } of stale) ui.note(`    ${repo}, ${role} key`);
+	ui.note("  A key deleted from Secretive cannot be restored, so these can be removed: the deploy");
+	ui.note("  key on GitHub, the wizard's record of it, and its routing in the VM.");
+	if (held.size === 0) {
+		ui.warn("Secretive holds no keys at all. If that is unexpected, leave these until it does.");
+	}
+	const choice = await ui.select({
+		title: "Remove them now?",
+		items: [
+			{ value: "leave", label: "Leave them for now" },
+			{ value: "remove", label: "Remove them", description: "from GitHub, the record and the VM" },
+		],
+	});
+	if (choice !== "remove") {
+		ui.note("Left as they are.");
+		return;
+	}
+
+	let forgotten = 0;
+	const repos = [...new Set(stale.map((entry) => entry.repo))];
+	for (const repo of repos) {
+		const deployKeys = await ui.work(`Checking the deploy keys on ${repo}`, () => listDeployKeys(repo));
+		if (deployKeys === null) {
+			ui.bad(`Could not list the deploy keys on ${repo}. Its entries are kept, to try again later.`);
+			continue;
+		}
+		const removed = new Set<number>();
+		for (const { role, key } of stale.filter((entry) => entry.repo === repo)) {
+			const match = deployKeys.find((deployKey) => deployKey.blob === key.blob);
+			if (match && !removed.has(match.id)) {
+				const result = await ui.work(`Removing "${match.title}" from ${repo}`, () => deleteDeployKey(repo, match.id));
+				if (!result.ok) {
+					ui.bad(`GitHub did not remove "${match.title}" from ${repo}. The entry is kept.`);
+					if (result.detail) ui.note(`  ${firstLine(result.detail)}`);
+					continue;
+				}
+				removed.add(match.id);
+				ui.good(`Removed the deploy key "${match.title}" from ${repo}`);
+			} else if (!match) {
+				ui.note(`${repo}, ${role} key: not on GitHub any more`);
+			}
+			forgetKey(state, alias, repo, role);
+			saveState(state);
+			forgotten += 1;
+		}
+	}
+	if (forgotten === 0) return;
+	ui.good(`Removed ${forgotten === 1 ? "one entry" : `${forgotten} entries`} from the wizard's record`);
+
+	const script = installScript(vmRepos(state, alias));
+	const result = await ui.work("Rewriting the routing in the VM", () => vmScript(alias, script));
+	if (result.ok && result.stdout.includes(INSTALLED_MARKER)) {
+		ui.good("The VM's routing no longer mentions them");
+	} else {
+		ui.bad("The routing in the VM could not be rewritten. The next run of the wizard does it.");
+		if (result.stderr) ui.note(`  ${firstLine(result.stderr)}`);
+	}
 }
 
 async function chooseRepo(ui: Ui, state: State, alias: string): Promise<{ repo: Repo; access: Access }> {
@@ -707,7 +764,8 @@ async function wizard(ui: Ui): Promise<Afterwards | undefined> {
 	ui.line(`${style.bold("pi-roost wizard")} ${style.dim("· give the VM access to one repository")}`);
 	const state = loadState();
 
-	const { alias, loginKeys } = await checkHost(ui, state);
+	const { alias, loginKeys, held } = await checkHost(ui, state);
+	await cleanUpStale(ui, state, alias, held);
 	const { repo, access } = await chooseRepo(ui, state, alias);
 	const entry = await ensureKeys(ui, state, alias, repo, access);
 	await setUpGuest(ui, state, alias);

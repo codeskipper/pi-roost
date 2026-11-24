@@ -7,7 +7,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { PublicKey, Role } from "./keys.ts";
+import { type PublicKey, type Role, ROLES } from "./keys.ts";
 
 /** A key the wizard has seen in Secretive. */
 export interface StoredKey extends PublicKey {
@@ -71,6 +71,38 @@ export function vmRepos(state: State, vm: string): Record<string, RepoEntry> {
 export function repoEntry(state: State, vm: string, repo: string): RepoEntry {
 	const vmEntry = (state.vms[vm] ??= { repos: {} });
 	return (vmEntry.repos[repo] ??= { keys: {} });
+}
+
+/** A recorded key whose private half is no longer in Secretive. */
+export interface StaleKey {
+	repo: string;
+	role: Role;
+	key: StoredKey;
+}
+
+/**
+ * Recorded keys for one VM that Secretive no longer holds, sorted by
+ * repository. A key deleted from Secretive cannot be restored: the private
+ * half lived in the Secure Enclave and was never exported.
+ */
+export function staleKeys(state: State, vm: string, held: ReadonlySet<string>): StaleKey[] {
+	const stale: StaleKey[] = [];
+	const repos = Object.entries(vmRepos(state, vm)).sort(([a], [b]) => a.localeCompare(b));
+	for (const [repo, entry] of repos) {
+		for (const role of ROLES) {
+			const key = entry.keys[role];
+			if (key && !held.has(key.blob)) stale.push({ repo, role, key });
+		}
+	}
+	return stale;
+}
+
+/** Remove one key from the record. A repository left with no keys is removed too. */
+export function forgetKey(state: State, vm: string, repo: string, role: Role): void {
+	const entry = state.vms[vm]?.repos[repo];
+	if (!entry) return;
+	delete entry.keys[role];
+	if (Object.keys(entry.keys).length === 0) delete state.vms[vm]?.repos[repo];
 }
 
 /** Every key blob the wizard has recorded, across all VMs. */
