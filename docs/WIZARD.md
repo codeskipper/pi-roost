@@ -484,7 +484,10 @@ write.
   clone now uses the usual GitHub address and the wizard's routing. Nothing
   made by hand is left in the VM's SSH configuration.
 
-Not yet covered on a host: the list of keys gone from Secretive.
+The list of keys gone from Secretive appeared at the start of that run. Its
+entries were not all read. The one noticed was most likely the deleted write
+key for the public fork, `codeskipper/secretive`, which reads much like
+secretive-notes. The entries now read as "owner/name, write key".
 
 Changed after that run: the deploy key's title on GitHub, which read "pi-roost
 pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
@@ -493,8 +496,8 @@ pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
 ### To do
 
 - [ ] Run the first slice on the everyday host and record what needs changing.
-  Seven runs done on 22 November 2026. Still to cover: the list of keys gone
-  from Secretive.
+  Seven runs done on 22 November 2026. Every path of the first slice has now
+  run on a host.
 - [ ] Confirm the four open points for
   [a separate login key](#a-separate-key-for-logging-in), then move the
   everyday host's VM off the personal GitHub key.

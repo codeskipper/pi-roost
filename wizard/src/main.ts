@@ -167,7 +167,7 @@ async function checkHost(ui: Ui, state: State): Promise<HostCheck> {
 	for (const [repoName, entry] of Object.entries(vmRepos(state, alias))) {
 		for (const role of ROLES) {
 			const key = entry.keys[role];
-			if (key && !held.has(key.blob)) gone.push(`${repoName} ${role}`);
+			if (key && !held.has(key.blob)) gone.push(`${repoName}, ${role} key`);
 		}
 	}
 	if (gone.length > 0) {
