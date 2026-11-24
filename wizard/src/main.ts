@@ -26,7 +26,7 @@ import {
 	rolesFor,
 	secretName,
 } from "./keys.ts";
-import { listKeys, openApp, socketPath, testSign, waitForNewKey } from "./secretive.ts";
+import { copyToClipboard, listKeys, openApp, socketPath, testSign, waitForNewKey } from "./secretive.ts";
 import {
 	knownBlobs,
 	loadState,
@@ -247,13 +247,23 @@ async function chooseRepo(ui: Ui, state: State, alias: string): Promise<{ repo: 
  * turns out to sign without asking.
  */
 async function checkAsksBeforeSigning(ui: Ui, repoName: string, key: PublicKey): Promise<boolean> {
+	const name = secretName(repoName, "write");
 	ui.line("Checking that this key asks before it signs.");
-	ui.line(`A Touch ID prompt for "${secretName(repoName, "write")}" should appear. ${style.bold("Press Deny.")}`);
+	ui.line(`A Touch ID prompt should appear. ${style.bold("Press Deny.")}`);
+	ui.line("Read the secret's name in the prompt first. It should be exactly:");
+	ui.line(`  ${style.bold(name)}`);
 	for (;;) {
 		const result = await ui.cancellableWork("Waiting for you to press Deny", (signal) => testSign(key, signal));
 		if (result === CANCELLED) return false;
 		if (result.refused) {
 			ui.good("The key did not sign without approval");
+			// The agent only exposes the attribution, so the name can be checked
+			// by eye alone. It is what every later prompt for this key shows.
+			if (!(await ui.confirm(`Did the prompt name the secret exactly "${name}"?`))) {
+				ui.bad("The secret's name is not the one asked for.");
+				ui.note("  Delete it in Secretive and run the wizard again. Nothing was registered on GitHub.");
+				stop();
+			}
 			return true;
 		}
 		if (!result.signed) {
@@ -312,20 +322,53 @@ async function createKey(ui: Ui, repoName: string, role: Role): Promise<PublicKe
 	}
 	ui.note("Set these when creating. Secretive 4.0.0 does not apply later edits until its agent restarts.");
 
-	const ready = await ui.select({
-		title: "Ready?",
-		items: [
-			{ value: "open", label: "Open Secretive and wait for the new key" },
-			{ value: "wait", label: "Wait for the new key", description: "Secretive is already open" },
-		],
-	});
-	if (ready === null) return null;
-	if (ready === "open") await openApp();
-
-	const added = await ui.cancellableWork("Waiting for a new key in Secretive", (signal) =>
-		waitForNewKey(before.keys, signal),
+	// The menu stays up while the user works in Secretive, and closes by
+	// itself as soon as a new key appears in the agent.
+	const watch = new AbortController();
+	const menu = new AbortController();
+	const detection = waitForNewKey(before.keys, watch.signal).then(
+		(keys) => {
+			menu.abort();
+			return keys;
+		},
+		() => null,
 	);
-	if (added === CANCELLED) return null;
+	const actions = [
+		{ value: "open", label: "Open Secretive" },
+		{ value: "name", label: "Copy the name", description: "to paste into Name" },
+		{ value: "attribution", label: "Copy the key attribution", description: "to paste into Key attribution" },
+	];
+	let cursor = 0;
+	let copied = "";
+	while (!menu.signal.aborted) {
+		const action = await ui.select({
+			title: `${copied}Waiting for the new key. Meanwhile:`,
+			items: actions,
+			initialIndex: cursor,
+			hint: "↑↓ move · enter select · esc cancel · continues when the key appears",
+			signal: menu.signal,
+		});
+		if (menu.signal.aborted) break;
+		if (action === null) {
+			watch.abort();
+			return null;
+		}
+		if (action === "open") {
+			await openApp();
+			cursor = 1;
+		} else {
+			const isName = action === "name";
+			if (await copyToClipboard(isName ? secretName(repoName, role) : expected)) {
+				copied = isName ? "Name copied. " : "Key attribution copied. ";
+			} else {
+				copied = "";
+				ui.warn("The clipboard could not be set. Type the value instead.");
+			}
+			cursor = 2;
+		}
+	}
+	const added = await detection;
+	if (!added) return null;
 	let key = added[0];
 	if (added.length > 1) {
 		const blob = await ui.select({
@@ -456,6 +499,7 @@ async function verify(ui: Ui, alias: string, repo: Repo, entry: RepoEntry, login
 		);
 		if (fetched.ok) {
 			ui.good("The read key works. Secretive shows a notification for it.");
+			ui.note(`  The notification should read "Using secret ${secretName(repo.name, "read")}".`);
 		} else {
 			ui.bad("Reading with the read key failed.");
 			if (fetched.stderr) ui.note(`  ${firstLine(fetched.stderr)}`);

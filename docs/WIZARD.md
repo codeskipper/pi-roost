@@ -307,10 +307,14 @@ What it does, in order:
    private repository offers read, or read and write. A public one offers
    write. For write, it warns when the default branch is not protected.
 4. **Keys:** for each key, it shows the four values to enter in Secretive and
-   waits. It finds the new key by comparing the agent's key list before and
+   waits, with a menu that can open Secretive and copy the name and the key
+   attribution to the clipboard. The menu closes by itself when the new key
+   appears; the wizard finds it by comparing the agent's key list before and
    after. For a write key it asks for a test signature and tells the user to
    press Deny. A signature that comes back anyway means the key does not
-   require authentication, and the wizard refuses it.
+   require authentication, and the wizard refuses it. It also shows the name
+   the Touch ID prompt should carry and asks whether it matched, because the
+   agent exposes the attribution and not the name.
 5. **Registers** each key as a deploy key with `gh repo deploy-key add`.
 6. **Writes the routing in the VM,** over the non-forwarding alias.
 7. **Checks from inside the VM,** with Secretive's socket forwarded: the keys
@@ -396,8 +400,26 @@ Second run, the same day: a private repository with read access.
   is left alone, and a real `git ls-remote` of the HTTPS address returned the
   repository's head.
 
-Not yet covered on a host: a private repository with read and write, a write
-key left at Notify, and a resumed run.
+Third run, the same day: the private repository again, now with read and
+write, and the write key left at Notify on purpose.
+
+- The wizard recognised the read key from the second run and went straight to
+  the write key. A run that resumes with an existing key therefore works.
+- **A write key at Notify is caught.** The key signed with no Touch ID prompt,
+  and the wizard refused it before registering anything.
+
+Fourth run: the write key recreated with Require Authentication.
+
+- The Touch ID prompt showed a wrong name: the intended name followed by the
+  attribution text three times. The key's attribution itself was correct, so
+  the extra text was in the Name field only. The likeliest cause is the
+  attribution being pasted into Name. The wizard could not see this, since the
+  agent exposes the attribution and not the name.
+- Two changes came out of it, both run against stand-ins only: the clipboard
+  menu, and the question after Deny about the name in the prompt.
+
+Not yet covered on a host: a complete run for a private repository with read
+and write, and the two changes above.
 
 Changed after that run: the deploy key's title on GitHub, which read "pi-roost
 pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
@@ -406,9 +428,9 @@ pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
 ### To do
 
 - [ ] Run the first slice on the everyday host and record what needs changing.
-  Two runs done on 22 November 2026: a public repository with write, and a
-  private one with read. Still to cover: a private repository with read and
-  write, a write key at Notify, and a resumed run.
+  Four runs done on 22 November 2026. Still to cover: a complete run for a
+  private repository with read and write, with the clipboard menu and the
+  name question.
 - [ ] Confirm the four open points for
   [a separate login key](#a-separate-key-for-logging-in), then move the
   everyday host's VM off the personal GitHub key.
@@ -423,9 +445,8 @@ pi-roost write" for a VM named pi-roost, is now "pi-roost wizard, VM <name>,
   login agent. Passed on 15 November 2026.
 - [x] Test whether the wizard can confirm a write key's protection level with
   a test signature. It can, for a key that requires authentication: Deny gives
-  *agent refused operation*. Shown on the everyday host on 22 November 2026.
-  The other half, a key at Notify signing with no prompt, has only been run
-  against a stand-in.
+  *agent refused operation*, and a key at Notify signs with no prompt. Both
+  shown on the everyday host on 22 November 2026.
 - [x] Fill the gaps in the spike results. Done on 15 November 2026.
 
 ### Spikes before building

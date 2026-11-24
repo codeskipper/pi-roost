@@ -90,6 +90,12 @@ export async function testSign(key: PublicKey, signal?: AbortSignal): Promise<Si
 	}
 }
 
+/** Put text on the clipboard, for pasting into Secretive. Returns false if it could not. */
+export async function copyToClipboard(text: string): Promise<boolean> {
+	const result = await run("pbcopy", [], { input: text });
+	return result.code === 0;
+}
+
 /** Bring the Secretive app to the front. */
 export async function openApp(): Promise<void> {
 	await run("open", ["-a", "Secretive"]);

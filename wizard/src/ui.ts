@@ -60,7 +60,15 @@ export interface SelectOptions {
 	maxVisible?: number;
 	/** Shown when the filter leaves nothing. */
 	emptyText?: string;
+	/** The item the cursor starts on. */
+	initialIndex?: number;
+	/** Replaces the key hints under the list. */
+	hint?: string;
+	/** Closes the list when aborted. The result is then null, as for Escape. */
+	signal?: AbortSignal;
 }
+
+type PickerOptions = Required<Omit<SelectOptions, "signal" | "hint">> & { hint?: string };
 
 /** A titled list, optionally narrowed by typing. */
 class Picker implements Component {
@@ -78,16 +86,19 @@ class Picker implements Component {
 	private visible: SelectItem[] = [];
 	private list: SelectList;
 
-	constructor(options: Required<SelectOptions>) {
+	constructor(options: PickerOptions) {
 		this.title = options.title;
 		this.items = options.items;
 		this.filter = options.filter;
 		this.maxVisible = options.maxVisible;
 		this.emptyText = options.emptyText;
-		this.hint = options.filter
-			? "type to filter · ↑↓ move · enter select · esc cancel"
-			: "↑↓ move · enter select · esc cancel";
+		this.hint =
+			options.hint ??
+			(options.filter
+				? "type to filter · ↑↓ move · enter select · esc cancel"
+				: "↑↓ move · enter select · esc cancel");
 		this.list = this.rebuild();
+		if (options.initialIndex > 0) this.list.setSelectedIndex(options.initialIndex);
 	}
 
 	private rebuild(): SelectList {
@@ -211,19 +222,28 @@ export class Ui {
 
 	/** Let the user pick one item. Resolves with its value, or null on Escape. */
 	select(options: SelectOptions): Promise<string | null> {
+		const { signal, ...rest } = options;
+		if (signal?.aborted) return Promise.resolve(null);
 		return new Promise((resolve) => {
 			const picker = new Picker({
 				filter: false,
 				maxVisible: 10,
 				emptyText: "Nothing matches",
-				...options,
+				initialIndex: 0,
+				...rest,
 			});
+			let done = false;
 			const finish = (value: string | null) => {
+				if (done) return;
+				done = true;
+				signal?.removeEventListener("abort", onAbort);
 				this.tui.removeChild(picker);
 				this.tui.setFocus(null);
 				this.tui.requestRender();
 				resolve(value);
 			};
+			const onAbort = () => finish(null);
+			signal?.addEventListener("abort", onAbort, { once: true });
 			picker.onSelect = (value) => finish(value);
 			picker.onCancel = () => finish(null);
 			this.tui.addChild(picker);
