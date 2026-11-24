@@ -301,13 +301,18 @@ What it does, in order:
 2. **Checks the host:** Secretive's agent answers, `gh` is signed in, a VM
    alias from `host/setup.sh` exists and answers, and the VM is not opened by
    a key held in Secretive. It lists keys in Secretive made outside the
-   wizard, as a note: every key there is in reach of the VM. It warns about
-   keys it recorded that are gone from Secretive, and when the VM is opened by
-   a key that is also on the GitHub account.
-3. **Repository and access:** a list from `gh` that narrows as you type. A
+   wizard, as a note: every key there is in reach of the VM. It warns when the
+   VM is opened by a key that is also on the GitHub account.
+3. **Keys that are gone:** recorded keys that Secretive no longer holds are
+   listed, with an offer to remove them. Removing one deletes its deploy key on
+   GitHub, found by the key itself and not by its title, drops it from
+   `state.json`, and rewrites the VM's routing. Leaving them is the default. A
+   repository whose deploy keys cannot be listed keeps its entries, to try
+   again later.
+4. **Repository and access:** a list from `gh` that narrows as you type. A
    private repository offers read, or read and write. A public one offers
    write. For write, it warns when the default branch is not protected.
-4. **Keys:** the write key is settled before the read key. For each key, it
+5. **Keys:** the write key is settled before the read key. For each key, it
    first offers the keys in Secretive that were made outside the wizard,
    ranked by whether their label names the repository, so a key made by hand
    can be taken over. When the write key was taken over, it can also serve
@@ -322,14 +327,14 @@ What it does, in order:
    the Touch ID prompt should carry and asks whether it matched, because the
    agent exposes the attribution and not the name. For a key taken over, it
    asks only whether the name clearly identifies the repository.
-5. **Registers** each key as a deploy key with `gh repo deploy-key add`,
+6. **Registers** each key as a deploy key with `gh repo deploy-key add`,
    unless it is on the repository already. A key there read-only, when write
    was chosen, is replaced after asking.
-6. **Writes the routing in the VM,** over the non-forwarding alias.
-7. **Checks from inside the VM,** with Secretive's socket forwarded: the keys
+7. **Writes the routing in the VM,** over the non-forwarding alias.
+8. **Checks from inside the VM,** with Secretive's socket forwarded: the keys
    are visible, the login key is not, and the read key can read. Testing the
    write key is offered, since it needs Touch ID.
-8. **Finishes** by printing the command for a session with the deploy keys in
+9. **Finishes** by printing the command for a session with the deploy keys in
    reach, and offers to open it.
 
 It can be interrupted. Each key is recorded as soon as it exists, so a second
@@ -362,13 +367,11 @@ Limits of this slice:
   the push rewrite for such a remote. Remove the separate push URL with
   `git config --unset remote.<name>.pushurl`. Found on the first host run: a
   clone in the VM had one, set by hand earlier.
-- **It only adds.** Removing a repository or a key is done by hand: on GitHub,
-  in Secretive, and in `state.json`.
+- **It only removes keys that are gone.** Removing a repository whose keys are
+  still in Secretive is done by hand: delete the keys in Secretive, then run
+  the wizard to clean up the rest.
 - **Your own repositories only.** Organisation repositories are not listed.
 - **No separate login key,** and no handling for a managed Homebrew.
-- **It does not remove stale entries.** A recorded key deleted from Secretive
-  stays in `state.json` and in the VM's routing until its repository is picked
-  again, and its deploy key stays on GitHub until removed there.
 
 How it was tested, and what was not:
 
@@ -484,7 +487,14 @@ write.
   clone now uses the usual GitHub address and the wizard's routing. Nothing
   made by hand is left in the VM's SSH configuration.
 
-The list of keys gone from Secretive appeared at the start of that run. Its
+The list of keys gone from Secretive appeared at the start of that run.
+Removing them was added afterwards, on a branch of its own, and run on the
+everyday host the same day: the deploy key for the fork was removed from
+GitHub, and the VM's routing for it was gone afterwards. The confusing part
+was the deploy key's title, "pi-roost pi-roost write": an early title format
+that names the VM, which is also called pi-roost, so it read as if it belonged
+to the pi-roost repository. The wizard's messages now lead with the repository
+and the key's role, and give the title only as an aside. Its
 entries were not all read. The one noticed was most likely the deleted write
 key for the public fork, `codeskipper/secretive`, which reads much like
 secretive-notes. The entries now read as "owner/name, write key".
